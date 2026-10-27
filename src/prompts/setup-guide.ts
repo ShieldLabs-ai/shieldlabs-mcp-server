@@ -13,6 +13,17 @@ export const BUILT_IN_SETUP_GUIDE = `# Integrate ShieldLabs (built-in guide)
 Inspect the project and reuse existing configuration. Follow https://shieldlabs.ai/get-started.md
 and the setup skill at https://github.com/ShieldLabs-ai/skills when available.
 
+## Guided stages
+
+Ask whether the user has an account only when unknown and no authenticated connection exists.
+State the proposed scope and reuse authorization already given; do not ask before each file or
+package. A general install starts with browser identification and a verified first result. Then
+ask what to do next, offering only unfinished server verification, signed webhooks, signed-in
+user linking/account checks, or finish. Run only selected stages, verify each and return to the
+remaining choices. Already selected later stages need no repeated question. Ask for a backend
+repo path or an authorized webhook receiver only when missing. Stop after finish; resolve failed
+verification before moving on. Browser-only identification does not prove server-side protection.
+
 ## 1. Account and domain
 
 Use the managed OAuth MCP connection by default. Give the user the fresh authorization URL:
