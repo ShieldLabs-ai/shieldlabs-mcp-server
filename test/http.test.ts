@@ -172,7 +172,7 @@ describe('streamable HTTP transport', () => {
     const transport = new StreamableHTTPClientTransport(new URL(running.url), {
       requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } },
     });
-    await client.connect(transport as never);
+    await client.connect(transport);
     const { tools } = await client.listTools();
     expect(tools).toHaveLength(7);
     const result = (await client.callTool({

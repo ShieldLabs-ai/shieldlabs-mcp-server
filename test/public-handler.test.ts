@@ -45,7 +45,7 @@ async function connectClient(token: string, deps: PublicDependencies): Promise<C
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
     fetch: (url, init) => handle(new Request(url, init), deps),
   });
-  await client.connect(transport as never);
+  await client.connect(transport);
   return client;
 }
 

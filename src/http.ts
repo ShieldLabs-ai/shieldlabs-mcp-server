@@ -3,7 +3,6 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { HEALTH_PATH, MAX_HTTP_BODY_BYTES, MCP_HTTP_PATH } from './constants.js';
 import type { Logger } from './log.js';
 
@@ -237,7 +236,7 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Runni
     });
     // The SDK declares onclose as "T | undefined" on this class and as optional on Transport;
     // the two only differ under exactOptionalPropertyTypes.
-    await mcp.connect(transport as unknown as Transport);
+    await mcp.connect(transport);
     await transport.handleRequest(req, res, body);
   };
 

@@ -22,6 +22,7 @@ All notable changes to this package are documented here. The format follows
 - Preserve the identification UUID returned by current production History profiles.
 - Render Markdown with actual line breaks and use Markdown for entity summaries when requested.
 - Keep local API-key modes read-only and apply the enabled-tool allowlist to integration prompts.
+- Update compatible runtime dependencies to MCP SDK 1.32.2 and Zod 4.6.7 in the lockfile.
 - Accept the live backend profile without leaking raw upstream errors or unmasked key values.
 
 ## [1.0.0] - 2026-09-30

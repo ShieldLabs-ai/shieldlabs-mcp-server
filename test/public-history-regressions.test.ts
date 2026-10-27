@@ -1,6 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { describe, expect, it } from 'vitest';
 import { handlePublicRequest } from '../src/public/handler.js';
 import { TokenCache } from '../src/public/token.js';
@@ -34,7 +33,7 @@ async function connect(instance: ReturnType<typeof host>) {
     new StreamableHTTPClientTransport(new URL('https://dev.mcp.shieldlabs.ai/mcp'), {
       fetch: instance.fetch,
       requestInit: { headers: { Authorization: `Bearer ${HOSTED_TOKEN}` } },
-    }) as Transport,
+    }),
   );
   return client;
 }

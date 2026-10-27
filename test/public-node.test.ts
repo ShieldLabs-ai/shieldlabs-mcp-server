@@ -1,7 +1,6 @@
 import { PassThrough } from 'node:stream';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { main, type MainResult, type Started } from '../src/cli.js';
 import { parseArgs } from '../src/config.js';
@@ -100,7 +99,7 @@ describe('--mode public on Node.js', () => {
       await client.connect(
         new StreamableHTTPClientTransport(new URL(server.url), {
           requestInit: { headers: bearer(TOKEN) },
-        }) as Transport,
+        }),
       );
       const request = fetch(server.url, {
         method: 'POST',
@@ -151,7 +150,7 @@ describe('--mode public on Node.js', () => {
     const transport = new StreamableHTTPClientTransport(new URL(url), {
       requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } },
     });
-    await client.connect(transport as never);
+    await client.connect(transport);
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name)).toContain(CHECK_CONNECTION_TOOL);
     expect(tools).toHaveLength(21);
