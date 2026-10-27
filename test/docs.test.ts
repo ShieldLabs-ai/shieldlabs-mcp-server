@@ -47,24 +47,33 @@ describe('package metadata', () => {
     expect(pkg.engines.node).toBe('>=20');
     expect(pkg.license).toBe('MIT');
     expect(pkg.bugs).toEqual({
-      url: 'https://github.com/ShieldLabs-ai/shieldlabs-mcp/issues',
+      url: 'https://github.com/ShieldLabs-ai/shieldlabs-mcp-server/issues',
       email: 'contact@shieldlabs.ai',
     });
     expect(Object.keys(pkg.dependencies).sort()).toEqual(['@modelcontextprotocol/sdk', 'zod']);
     expect(JSON.stringify(pkg)).not.toContain('file:');
-    expect(pkg.mcpName).toBe('io.github.shieldlabs-ai/shieldlabs-mcp');
+    expect(pkg.mcpName).toBe('io.github.shieldlabs-ai/shieldlabs-mcp-server');
     expect(pkg.files).toEqual(
-      expect.arrayContaining(['dist', 'server.json', 'README.md', 'CHANGELOG.md', 'LICENSE']),
+      expect.arrayContaining([
+        'dist',
+        'server.json',
+        'README.md',
+        'HOSTED-OPERATIONS.md',
+        'CHANGELOG.md',
+        'LICENSE',
+      ]),
     );
   });
 
-  it('describes the npm package and the image in server.json', () => {
+  it('describes the npm package and managed OAuth remote in server.json', () => {
     expect(server.name).toBe(pkg.mcpName);
     expect(server.version).toBe(SERVER_VERSION);
     expect(server.description.length).toBeLessThanOrEqual(100);
     expect(server.packages.map((p: any) => [p.registryType, p.identifier])).toEqual([
       ['npm', '@shieldlabs-ai/mcp'],
-      ['oci', `ghcr.io/shieldlabs-ai/shieldlabs-mcp:${SERVER_VERSION}`],
+    ]);
+    expect(server.remotes).toEqual([
+      { type: 'streamable-http', url: 'https://mcp.shieldlabs.ai/mcp' },
     ]);
     expect(server.packages[0].version).toBe(SERVER_VERSION);
     const documented = [
@@ -92,35 +101,40 @@ describe('package metadata', () => {
   });
 
   it('ships the release notes and the license', () => {
-    expect(read('CHANGELOG.md')).toContain(`## [${SERVER_VERSION}] - 2026-09-30`);
+    expect(read('CHANGELOG.md')).toContain(`## [${SERVER_VERSION}] - 2026-10-28`);
     expect(read('LICENSE')).toContain('Copyright (c) 2026 ShieldLabs Inc.');
     const readme = read('README.md');
-    for (const section of [
-      '## How it fits',
-      '## Install',
-      '## Quick start',
-      '## Guide',
-      '## Reference',
-      '## Security',
-      '## Errors and retries',
-      '### Troubleshooting',
-      '## Compatibility',
+    for (const text of [
+      '## Connect with OAuth',
+      '## Hosted tools',
+      '## Build from source',
+      '## Security and data handling',
       '## Development',
       '## License',
+      'sign-in or registration',
+      'https://github.com/ShieldLabs-ai/skills',
     ]) {
-      expect(readme).toContain(section);
+      expect(readme).toContain(text);
     }
-    for (const variable of [
-      'SHIELDLABS_API_KEY',
-      'SHIELDLABS_SECRET_KEY',
-      'SHIELDLABS_DOMAIN',
-      'SHIELDLABS_WEBHOOK_SECRET',
-      'SHIELDLABS_API_BASE_URL',
-      'SHIELDLABS_MANAGEMENT_BASE_URL',
-      'SHIELDLABS_MCP_TOKEN',
-    ]) {
-      expect(readme).toContain(`\`${variable}\``);
+  });
+
+  it('distinguishes hosted writes from local reads and ships the operation schemas', () => {
+    const readme = read('README.md');
+    const reference = read('HOSTED-OPERATIONS.md');
+    expect(readme).toContain('[hosted operations reference](HOSTED-OPERATIONS.md)');
+    expect(readme).toContain('**21 tools**');
+    expect(readme).toContain('Local stdio and single-tenant API-key HTTP mode remain read-only');
+    for (const text of [readme, read('CHANGELOG.md')]) {
+      expect(text).toContain('include_secret:true');
+      expect(text).toContain('confirm:true');
+      expect(text).toContain('transcripts');
+      expect(text).toMatch(/every\s+operation/i);
+      expect(text).not.toMatch(/offers one tool|still only offers|Every tool is read-only/);
     }
+    expect(reference).toContain('80 Unicode characters');
+    expect(reference).toContain('512 UTF-8 bytes');
+    expect(reference).toContain('Pure IPv6 is refused locally');
+    expect(reference).toContain('Source availability does not imply deployment');
   });
 });
 

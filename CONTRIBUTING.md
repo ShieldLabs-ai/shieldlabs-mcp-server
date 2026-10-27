@@ -7,6 +7,8 @@ write to [contact@shieldlabs.ai](mailto:contact@shieldlabs.ai).
 
 ```bash
 npm ci
+(cd ../shieldlabs-node && npm ci && npm pack)   # until @shieldlabs-ai/node is published
+npm install --no-save ../shieldlabs-node/shieldlabs-ai-node-1.0.0.tgz
 ```
 
 ## Before you open a pull request
@@ -17,7 +19,7 @@ npm run lint            # eslint and prettier --check
 npm test -- --coverage  # coverage must stay at or above 85 %
 npm run build && node dist/index.js --help
 npm run test:worker     # the hosted mode in the Workers runtime (Node.js 22 or later)
-npm run worker:check    # bundles like wrangler deploy --dry-run --env dev; no Node.js built-ins
+npm run worker:check    # bundles the Worker without uploading it; no Node.js built-ins
 ```
 
 The CI workflow runs the commands above on Node.js 20, 22 and 24, plus the stdio smoke test
@@ -52,14 +54,11 @@ or later, before you open a pull request that touches `src/public/`, `src/worker
 
 ## Releases
 
-`@shieldlabs-ai/node` is pinned as a development dependency and bundled into `dist/`. Local, CI and
-release builds all use `npm ci` and the checked-in lockfile. No sibling repository or private token
-is required. To upgrade the bundled SDK, update the dependency and lockfile together, then run the
-checks above and the stdio smoke test.
-
-To check an installed tarball as an MCP client, pass its executable to the same smoke test:
-`node scripts/smoke-stdio.mjs /path/to/install/node_modules/@shieldlabs-ai/mcp/dist/index.js`.
-The temporary install needs only production dependencies; the Node SDK stays inside the bundle.
+`@shieldlabs-ai/node` is bundled into `dist/`. Until it is published on npm, the workflows build it
+from its repository at the pin in `SHIELDLABS_NODE_REF` (CI, on `development` and `main`, and the dev deploy) and in
+`production.yml` (the prod deploy on `main`). That pin is the reviewed 1.x commit, not `shieldlabs-node` `main`. Each workflow
+stops unless the pin is a 1.x version. While that repository is private, add a read-only token as
+the `SHIELDLABS_NODE_TOKEN` secret.
 
 Maintainers push a `v*` tag that matches `package.json`. The release workflow checks, builds and
 packs with read-only permissions, then publishes the package to npm with provenance (environment

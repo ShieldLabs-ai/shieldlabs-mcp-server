@@ -98,57 +98,30 @@ describe('wrangler.jsonc', () => {
   const read = (env: string | undefined) =>
     unstable_readConfig({ config: configPath, env }, { hideWarnings: true });
 
-  it('deploys Development as shieldlabs-mcp-dev on dev.mcp.shieldlabs.ai', () => {
-    const dev = read('dev');
-    expect(dev.name).toBe('shieldlabs-mcp-dev');
-    expect(dev.routes).toEqual([{ pattern: 'dev.mcp.shieldlabs.ai', custom_domain: true }]);
-    expect(dev.workers_dev).toBe(false);
-    expect(dev.vars).toEqual({
-      SHIELDLABS_PUBLIC_ORIGIN: 'https://dev.mcp.shieldlabs.ai',
-      SHIELDLABS_AUTH_ISSUER: 'https://dev.account.shieldlabs.ai',
-      SHIELDLABS_PORTAL_URL: 'https://dev.account.shieldlabs.ai',
-    });
-    const config = publicConfigFromEnv({
-      ...(dev.vars as PublicEnv),
-      MCP_GATEWAY_KEY: `k1:${SECRET}`,
-    });
-    expect(protectedResourceMetadata(config)).toMatchObject({
-      resource: 'https://dev.mcp.shieldlabs.ai/mcp',
-      authorization_servers: ['https://dev.account.shieldlabs.ai'],
-    });
-  });
-
-  it('deploys Production as shieldlabs-mcp on mcp.shieldlabs.ai, with the same shape', () => {
-    const dev = read('dev');
-    const production = read('production');
-    expect(production.name).toBe('shieldlabs-mcp');
-    expect(production.routes).toEqual([{ pattern: 'mcp.shieldlabs.ai', custom_domain: true }]);
-    expect(production.workers_dev).toBe(false);
-    expect(production.vars).toEqual({
-      SHIELDLABS_PUBLIC_ORIGIN: 'https://mcp.shieldlabs.ai',
-      SHIELDLABS_AUTH_ISSUER: 'https://account.shieldlabs.ai',
-      SHIELDLABS_PORTAL_URL: 'https://account.shieldlabs.ai',
-    });
-    type RateLimit = { name: string; namespace_id: string; simple: unknown };
-    const limits = (config: typeof dev) => config.ratelimits as RateLimit[];
-    const shape = (config: typeof dev) =>
-      limits(config).map(({ name, simple }) => ({ name, simple }));
-    expect(shape(production)).toEqual(shape(dev));
-    expect(shape(dev).map(({ name }) => name)).toEqual(['RL_TOKEN', 'RL_ANON', 'RL_TOKEN_CHECK']);
-    const namespaces = [...limits(dev), ...limits(production)].map((rl) => rl.namespace_id);
-    expect(new Set(namespaces).size).toBe(6);
-  });
-
-  it('never deploys Production by default or commits the gateway key', () => {
-    const top = read(undefined);
-    const dev = read('dev');
-    for (const key of ['name', 'routes', 'vars', 'ratelimits', 'workers_dev'] as const) {
-      expect(top[key], key).toEqual(dev[key]);
-    }
-    for (const config of [top, dev, read('production')]) {
+  it('ships only local example settings without production routes or a gateway key', () => {
+    for (const config of [read(undefined), read('dev')]) {
+      expect(config.name).toBe('shieldlabs-mcp-local');
+      expect(config.routes ?? []).toEqual([]);
+      expect(config.workers_dev).toBe(false);
+      expect(config.vars).toEqual({
+        SHIELDLABS_PUBLIC_ORIGIN: 'https://mcp.example.test',
+        SHIELDLABS_AUTH_ISSUER: 'https://account.example.test',
+        SHIELDLABS_PORTAL_URL: 'https://account.example.test',
+      });
       expect(Object.keys(config.vars)).not.toContain('MCP_GATEWAY_KEY');
       expect(config.compatibility_flags).toEqual([]);
       expect(config.main).toMatch(/src\/worker\.ts$/);
+      const rateLimits = config.ratelimits as { name: string; namespace_id: string }[];
+      expect(rateLimits.map(({ name }) => name)).toEqual(['RL_TOKEN', 'RL_ANON', 'RL_TOKEN_CHECK']);
+      expect(new Set(rateLimits.map(({ namespace_id }) => namespace_id)).size).toBe(3);
+      const publicConfig = publicConfigFromEnv({
+        ...(config.vars as PublicEnv),
+        MCP_GATEWAY_KEY: `k1:${SECRET}`,
+      });
+      expect(protectedResourceMetadata(publicConfig)).toMatchObject({
+        resource: 'https://mcp.example.test/mcp',
+        authorization_servers: ['https://account.example.test'],
+      });
     }
   });
 });

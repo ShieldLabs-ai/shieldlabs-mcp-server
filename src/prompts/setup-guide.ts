@@ -10,121 +10,78 @@ import type { ToolName } from '../constants.js';
 /** Concise integration guide used when the published setup skill cannot be fetched. */
 export const BUILT_IN_SETUP_GUIDE = `# Integrate ShieldLabs (built-in guide)
 
-ShieldLabs identifies visitors and scores risk in three steps: the browser runs an identification
-and gets a request ID, the backend reads the verdict for that request ID, and the backend decides
-what to do with the protected action (signup, login, checkout). Confirm version-sensitive details
-against https://docs.shieldlabs.ai.
+Inspect the project and reuse existing configuration. Follow https://shieldlabs.ai/get-started.md
+and the setup skill at https://github.com/ShieldLabs-ai/skills when available.
 
-## 1. Plan
+## 1. Account and domain
 
-- Detect the stack: frontend framework (plain JS, React, Next.js, Vue or Nuxt, Angular, Svelte or
-  SvelteKit) and backend language (Node.js, Python, Go, PHP, Java, .NET).
-- List the protected actions. Each one gets exactly one fresh identification.
-- Keys from the analytics dashboard (https://app.shieldlabs.ai), one domain each:
-  - SHIELDLABS_PUBLIC_KEY: browser only (framework prefixes such as VITE_ or NEXT_PUBLIC_ are fine).
-  - SHIELDLABS_API_KEY: Private API Key (sec_...), backend only.
-  - SHIELDLABS_WEBHOOK_SECRET: endpoint signing secret (whsec_...), backend only.
-  Never put the Private API Key, the Secret Key or the signing secret in a client bundle.
+Use the managed OAuth MCP connection by default. Give the user the fresh authorization URL:
+they sign in or create a ShieldLabs account and approve access in their browser. Wait for approval;
+keep the flow in one browser and restart an expired flow. Never request passwords or OAuth codes.
+If MCP is unavailable or the user chooses the dashboard, use https://app.shieldlabs.ai to sign in
+or register and add or select the domain. Do one setup path, then continue.
 
-## 2. Browser: get a request ID
+Configure a Public Key for browser code and a Private API Key for the backend. Keep .env ignored
+and secrets out of chat, logs and frontend bundles. OAuth authenticates MCP, while the app's SDK
+uses its own domain keys. Do not automatically rotate an existing masked key.
+
+## 2. Browser
+
+Detect the framework and install its matching browser SDK. These examples require compatible
+JS/Node SDK 1.1.0 or later; verify registry availability and installed types before writing code.
+Use the plain JavaScript package when no framework is present:
 
 \`\`\`ts
-import { load, type LoadOptions } from '@shieldlabs-ai/js';
-
-const options: LoadOptions = { publicKey: import.meta.env.VITE_SHIELDLABS_PUBLIC_KEY };
-load(options).catch(() => {}); // start loading now, but never await it at the top level
-
-// At the protected action, not on every render or route change:
-async function submitSignup(form: Record<string, string>, userHidFromYourServer: string) {
-  let requestId: string | null = null;
-  try {
-    const agent = await load(options); // the loaded agent, or a new attempt after a failed load
-    ({ requestId } = await agent.identify({ userId: userHidFromYourServer }));
-  } catch {
-    // No identification (a content blocker, a network error): send the action anyway.
-  }
-  await fetch('/signup', { method: 'POST', body: JSON.stringify({ ...form, requestId }) });
+import { load } from '@shieldlabs-ai/js';
+// Call from the selected action handler; never await it at the top level.
+async function identifyAction() {
+  const agent = await load({ publicKey: publicKeyFromEnvironment });
+  const { identificationId } = await agent.identify();
+  return identificationId; // Pass with the action to your existing backend.
 }
 \`\`\`
 
-- The framework packages (@shieldlabs-ai/react, /vue, /angular, /svelte, /next) load the same agent
-  through a provider and offer an identify helper with loading and error state.
-- Identify once per protected action. Each call is a billable identification, and the ingest
-  allows about 15 requests per minute per visitor IP.
-- Start the identification when the user begins the action (agent.identifyOnInteraction(form)
-  starts it on the first interaction with the form): the History row appears about 1 to 3 seconds
-  after the browser call, so the verdict is usually stored when the form arrives.
-- userId is a User HID computed on your server (step 4), never a raw email address or account ID.
-- The agent loads from https://cdn.shieldlabs.ai only; allow its origins in your Content Security
-  Policy (see the docs).
+The agent loads from https://cdn.shieldlabs.ai. Follow the documented CSP. Test on the registered
+HTTPS hostname. A browser UUID alone does not prove that the identification was accepted.
+Only add User HID linking when required; compute it on the server with the SDK helper.
 
-## 3. Backend: read and apply the verdict
+## 3. Existing backend
 
 \`\`\`ts
 import { ShieldLabs, evaluateIdentification } from '@shieldlabs-ai/node';
-
 const shieldlabs = new ShieldLabs({ apiKey: process.env.SHIELDLABS_API_KEY! });
-
-// Waits up to 10 s in total for the row and returns the first version it finds. The row appears
-// about 1 to 3 s after the browser call and can be refined for up to about 10 s.
-const identification = await shieldlabs.identifications.get(requestId);
-
-// Claim the request ID first with an atomic insert-if-absent (Redis SET NX, a unique key in SQL),
-// so that two requests with the same ID cannot both pass; then evaluate.
-const firstUse = identification !== null && (await claimRequestId(identification.request_id));
+const identification = await shieldlabs.identifications.get(identificationId);
+// Atomically claim a nonempty identification.identification_id for replay protection.
+const firstUse = identification !== null && identification.identification_id !== '' &&
+  await claimIdentificationId(identification.identification_id);
 const verdict = evaluateIdentification(identification, {
   maxAge: 5 * 60_000,
   isReplay: () => !firstUse,
 });
-if (!verdict.ok) return refuse(verdict.reason); // missing, replayed, stale, rate_limited, ...
+// Apply the authorized application's policy to verdict and identification.
 \`\`\`
 
-Server SDKs with the same model exist for Python (shieldlabs), Go, PHP, Java and .NET. Rules:
-- A missing identification means unverified, never clean.
-- Refuse reused request IDs and identifications older than your freshness window (5 minutes here).
-- Branch on risk_score (bands: trusted 0-29, suspicious 30-59, dangerous 60-100) and
-  detection_flags. 999 is a rate-limit marker, not a score. Never add up signal weights.
-- The all-zero device ID means no usable device signals.
+Missing, stale or replayed results are unverified. Risk bands are Trusted 0-29, Suspicious 30-59
+and Dangerous 60-100; 999 is a rate-limit marker. Never reconstruct the score by adding weights.
+If no backend exists, install the browser integration and verify through MCP or the dashboard.
+Do not invent a backend or put private keys in browser code.
 
-## 4. User HID
+## 4. Webhooks, when requested
 
-\`\`\`ts
-import { userHid } from '@shieldlabs-ai/node';
-// hidSecret: a long random value created once and kept on your server (changing it changes every User HID).
-const hid = userHid(user.id, hidSecret); // HMAC-SHA256, 64 lowercase hex characters
-\`\`\`
+Verify X-Shield-Signature against the original bytes with the server SDK before parsing.
+Deduplicate using the verified envelope's opaque event_id; it is separate from the identification
+UUID. Store privately or enqueue the verified event and respond promptly. Verify is a receiver
+check; Test is a sample delivery. Neither proves that a real scored identification was delivered.
 
-Pass it to the browser and use it for History API lookups by user_hid. A User HID travels as one
-URL path segment in those lookups, so it cannot contain "/" or be "." or ".."; the hex output of
-userHid() is always searchable.
+## 5. Verify
 
-## 5. Webhooks (optional)
-
-\`\`\`ts
-import { webhooks } from '@shieldlabs-ai/node';
-
-// One secret, or several separated by commas while you rotate: any of them verifies.
-const secrets = process.env.SHIELDLABS_WEBHOOK_SECRET!.split(',').map((secret) => secret.trim());
-const event = webhooks.constructEvent(rawBody, req.headers['x-shield-signature'], secrets);
-if (event.event_type === 'identification.scored') enqueue(event.data); // idempotent on data.request_id
-\`\`\`
-
-Verify the raw body before parsing and answer 2xx within 1 second. ShieldLabs sends one delivery
-per identification today (1 second timeout, no retries); later releases add retries that resend
-identical bytes, so make the handler idempotent on data.request_id. Use the History API for
-guaranteed reads and for the latest state (a History row can be refined after the webhook was
-sent, and the webhook is not sent again).
-
-## 6. Verify
-
-- The browser sends a request ID with every protected action; nothing else about risk reaches it.
-- The backend refuses missing, reused, stale, rate-limited, automated and dangerous identifications.
-- No secret key appears in client code or logs.
-- Test on a registered domain: on localhost the page still gets a request ID, but the
-  identification is rejected and the backend never finds it.
-- Test with your server SDK: the request ID from a real signup returns a verdict.
+Trigger one fresh visit or protected action. Capture its actual browser identificationId and
+read the same UUID through MCP (request_id with wait=true) or the dashboard, and through the
+backend when configured. Scoring is asynchronous: wait within the supported budget and retry
+boundedly if still pending. Inspect Risk Score, flags, hostname and timestamps. Empty detailed
+weights do not mean a zero score. Report each check as passed, failed or not configured; never
+claim a sample Test event or a synthetic fixture proves a real integration.
 `;
-
 export interface SetupGuide {
   text: string;
   /** Where the text came from: the skill URL, or "built-in". */

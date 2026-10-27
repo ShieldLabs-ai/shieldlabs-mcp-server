@@ -1,3 +1,4 @@
+import { SERVER_VERSION } from '../src/constants.js';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { main, warnShortToken, type MainResult, type Started } from '../src/cli.js';
@@ -28,9 +29,13 @@ describe('main()', () => {
     expect(io.out()).toContain('Usage: shieldlabs-mcp [options]');
     expect(io.out()).toContain('SHIELDLABS_MCP_TOKEN');
     expect(io.out()).toContain('shieldlabs_get_identification');
+    expect(io.out()).toContain(
+      'Local tools are read-only. Hosted mode also manages domains and webhooks.',
+    );
+    expect(io.out()).toContain('Local mode only: comma-separated allowlist');
     const version = streams();
     expect(await main(['-v'], { env: {}, ...version })).toEqual({ exitCode: 0 });
-    expect(version.out()).toBe('1.0.0\n');
+    expect(version.out()).toBe(`${SERVER_VERSION}\n`);
   });
 
   it('reports usage errors on stderr with exit code 2', async () => {

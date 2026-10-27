@@ -7,7 +7,7 @@ import { CHECK_CONNECTION_TOOL } from '../../src/public/server.js';
 
 // The Worker runs with the dev settings of wrangler.jsonc, except the account API origin and the
 // gateway key (vitest.worker.config.ts).
-const ORIGIN = 'https://dev.mcp.shieldlabs.ai';
+const ORIGIN = 'https://mcp.example.test';
 const MCP_URL = `${ORIGIN}/mcp`;
 const PORTAL = 'https://account.example.test';
 const SECRET = 'gateway-test-secret-0123456789abcdef';
@@ -120,6 +120,23 @@ beforeEach(() => {
 });
 
 describe('the Worker', () => {
+  it('rejects duplicate tool arguments before a management operation reaches Portal', async () => {
+    const duplicateToken = `slat_${'D'.repeat(43)}`;
+    live.add(duplicateToken);
+    const response = await SELF.fetch(MCP_URL, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${duplicateToken}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"shieldlabs_patch_domain","arguments":{"enabled":true,"enabled":false}}}',
+    });
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as any).error.code).toBe(-32700);
+    expect(upstream.every((call) => new URL(call.url).pathname === '/mcp/v1/ping')).toBe(true);
+  });
+
   it('answers /health with 200 and the version, without calling the account API', async () => {
     const response = await SELF.fetch(`${ORIGIN}/health`);
     expect(response.status).toBe(200);
@@ -134,7 +151,7 @@ describe('the Worker', () => {
     expect(upstream).toHaveLength(0);
   });
 
-  it('serves the protected resource metadata of Development at both paths', async () => {
+  it('serves the protected resource metadata of the configured test environment at both paths', async () => {
     for (const path of [
       '/.well-known/oauth-protected-resource/mcp',
       '/.well-known/oauth-protected-resource',
@@ -145,7 +162,7 @@ describe('the Worker', () => {
       expect(await response.text()).toBe(
         JSON.stringify({
           resource: `${ORIGIN}/mcp`,
-          authorization_servers: ['https://dev.account.shieldlabs.ai'],
+          authorization_servers: ['https://account.example.test'],
           bearer_methods_supported: ['header'],
           resource_name: 'ShieldLabs',
           resource_documentation: 'https://docs.shieldlabs.ai',
@@ -161,9 +178,10 @@ describe('the Worker', () => {
       version: SERVER_VERSION,
     });
     const listed = await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
-    expect(listed.result.tools.map((tool: { name: string }) => tool.name)).toEqual([
+    expect(listed.result.tools.map((tool: { name: string }) => tool.name)).toContain(
       CHECK_CONNECTION_TOOL,
-    ]);
+    );
+    expect(listed.result.tools).toHaveLength(21);
     const checked = await rpc({
       jsonrpc: '2.0',
       id: 3,

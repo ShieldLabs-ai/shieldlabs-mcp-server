@@ -38,6 +38,6 @@ Sign in when Grok asks. The only tool in this release is `shieldlabs_check_conne
 The skills and slash commands install from the plugin:
 
 ```bash
-grok plugin marketplace add ShieldLabs-ai/shieldlabs-skills
+grok plugin marketplace add ShieldLabs-ai/skills
 grok plugin install shieldlabs --trust
 ```

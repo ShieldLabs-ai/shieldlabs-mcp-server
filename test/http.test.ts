@@ -1,3 +1,4 @@
+import { SERVER_VERSION } from '../src/constants.js';
 import { request as httpRequest } from 'node:http';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -119,7 +120,10 @@ describe('streamable HTTP transport', () => {
     const response = await post(INITIALIZE, { authorization: `Bearer ${TOKEN}` });
     expect(response.status).toBe(200);
     const body: any = await response.json();
-    expect(body.result.serverInfo).toMatchObject({ name: 'shieldlabs-mcp', version: '1.0.0' });
+    expect(body.result.serverInfo).toMatchObject({
+      name: 'shieldlabs-mcp',
+      version: SERVER_VERSION,
+    });
     expect(body.result.instructions).toContain('trusted 0-29');
   });
 
@@ -164,7 +168,7 @@ describe('streamable HTTP transport', () => {
   });
 
   it('serves a full MCP session to the SDK client', async () => {
-    const client = new Client({ name: 'http-test', version: '1.0.0' });
+    const client = new Client({ name: 'http-test', version: SERVER_VERSION });
     const transport = new StreamableHTTPClientTransport(new URL(running.url), {
       requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } },
     });

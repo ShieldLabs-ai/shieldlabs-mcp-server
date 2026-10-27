@@ -1,3 +1,4 @@
+import { parseStrictJson } from './strict-json.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { jsonSchemaValidator } from '@modelcontextprotocol/sdk/validation';
 import { HEALTH_PATH, MAX_HTTP_BODY_BYTES, MCP_HTTP_PATH, SERVER_VERSION } from '../constants.js';
@@ -36,6 +37,7 @@ import {
   withHeaders,
 } from './responses.js';
 import { createPublicServer } from './server.js';
+import { OperationsClient } from './operations-client.js';
 import { bearerToken, isAccessToken, type TokenCache } from './token.js';
 
 export interface PublicDependencies {
@@ -124,7 +126,7 @@ async function readBodyText(request: Request, limit: number): Promise<string | u
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(bytes);
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 }
 
 /** A 401 for a missing or refused token, or 429 when this address sends too many of them. */
@@ -187,13 +189,17 @@ async function serveMcp(
       Allow: 'POST, OPTIONS',
     });
   }
-  const text = await readBodyText(request, MAX_HTTP_BODY_BYTES);
-  if (text === undefined) {
-    return rpcErrorResponse(413, -32000, `Request body larger than ${MAX_HTTP_BODY_BYTES} bytes.`);
-  }
   let body: unknown;
   try {
-    body = JSON.parse(text);
+    const text = await readBodyText(request, MAX_HTTP_BODY_BYTES);
+    if (text === undefined) {
+      return rpcErrorResponse(
+        413,
+        -32000,
+        `Request body larger than ${MAX_HTTP_BODY_BYTES} bytes.`,
+      );
+    }
+    body = parseStrictJson(text);
   } catch {
     return rpcErrorResponse(400, -32700, 'Parse error: the body is not valid JSON.');
   }
@@ -210,6 +216,16 @@ async function serveMcp(
 
   const server = createPublicServer({
     now,
+    operations: new OperationsClient({
+      config,
+      fetch: deps.fetch ?? globalFetch,
+      token,
+      tokenHash,
+      now,
+      signal: request.signal,
+      onInvalidToken: () => deps.cache.forget(tokenHash),
+      ...(deps.nonce === undefined ? {} : { nonce: deps.nonce }),
+    }),
     ...(deps.jsonSchemaValidator === undefined
       ? {}
       : { jsonSchemaValidator: deps.jsonSchemaValidator }),

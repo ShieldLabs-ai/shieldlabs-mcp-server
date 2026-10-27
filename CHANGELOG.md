@@ -4,42 +4,25 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Fixed
-
-- Domain profile responses retain only masked key values before sharing or caching the result;
-  unexpected key values are redacted and raw profile data is discarded. Management error messages
-  no longer echo upstream response bodies.
-- The integration prompt respects the exposed tools, including offline mode and the allowlist.
-  A remote or cached setup guide that mentions unavailable tools falls back to the built-in guide.
-- Clean source builds install the published Node SDK from the public registry as a pinned build
-  dependency. CI and releases use the same lockfile, without a sibling SDK checkout or tarball.
+## [1.1.0] - 2026-10-28
 
 ### Added
 
-- A Grok client example (`examples/grok`) for the same local server Claude Code starts, plus the
-  hosted URL for Grok. The hosted server still only offers `shieldlabs_check_connection`.
-- Public mode, for the hosted multi-tenant server (`--transport http --mode public`, or the
-  Cloudflare Worker entry `src/worker.ts`). Users connect by signing in with their ShieldLabs
-  account (OAuth); a request without an access token gets a 401 with the `resource_metadata`
-  challenge, and the protected resource metadata (RFC 9728, without scopes) is served at
-  `/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-protected-resource`.
-- Every access token (`slat_...`) is checked with `GET /mcp/v1/ping` of the ShieldLabs account
-  API, signed with the `X-Shield-Gateway` header (key `MCP_GATEWAY_KEY`, a fresh nonce per
-  request). An accepted token is remembered for 60 seconds under its SHA-256 hash; refusals are
-  never remembered. Any other credential, API keys included, gets the 401 without being sent
-  anywhere: API keys are a later step.
-- In this release public mode offers one tool, `shieldlabs_check_connection`, and no prompts or
-  resources; the identification tools follow when the account API serves them to the hosted
-  server. Local and single-tenant HTTP modes are unchanged.
-- CORS and Origin checks for browser clients, one JSON-RPC message per request, rate limits per
-  token and per address (pings for tokens that are not in the cache are limited per address before
-  the account API is asked), and one JSON log line per request without tokens, signatures or
-  bodies.
-- `wrangler.jsonc` with the `dev` (`dev.mcp.shieldlabs.ai`) and `production`
-  (`mcp.shieldlabs.ai`) environments, Worker tests in workerd (`npm run test:worker`), a bundle
-  check (`npm run worker:check`), `--trust-proxy` for the container, and `examples/hosted`.
+- Managed OAuth MCP with **21 tools** for connection checks, domains, webhooks and risk
+  investigations. Every operation has strict inputs, bounded output and account isolation.
+- Destructive operations require `confirm:true`. One-time credentials require explicit
+  `include_secret:true`; otherwise secrets are masked. MCP clients may store transcripts.
+- Public source and independent npm builds, with a pinned SDK dependency and Node/workerd
+  tests. Production deployment settings and gateway secrets are maintained separately.
+- Current setup guide and links to the separate ShieldLabs skills repository, including
+  sign-in or registration before OAuth consent and real identification verification.
+
+### Fixed
+
+- Preserve the identification UUID returned by current production History profiles.
+- Render Markdown with actual line breaks and use Markdown for entity summaries when requested.
+- Keep local API-key modes read-only and apply the enabled-tool allowlist to integration prompts.
+- Accept the live backend profile without leaking raw upstream errors or unmasked key values.
 
 ## [1.0.0] - 2026-09-30
 
