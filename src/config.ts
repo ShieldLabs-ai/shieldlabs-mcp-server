@@ -229,7 +229,7 @@ export const HELP_TEXT = `Usage: shieldlabs-mcp [options]
 
 MCP server for ShieldLabs: read identifications, search history, summarize users,
 devices and IP addresses, explain Risk Scores and verify webhook signatures.
-Every tool is read-only.
+Local tools are read-only. Hosted mode also manages domains and webhooks.
 
 Options:
   --transport <stdio|http>   Transport to serve (default: stdio)
@@ -240,7 +240,7 @@ Options:
   --host <address>           Bind address for --transport http (default: ${DEFAULT_HTTP_HOST})
   --allowed-origins <list>   Comma-separated browser origins allowed to call the HTTP
                              endpoint (default: none, requests with an Origin header are refused)
-  --tools <list>             Comma-separated allowlist of tools to expose, with or
+  --tools <list>             Local mode only: comma-separated allowlist of tools, with or
                              without the shieldlabs_ prefix (default: every available tool)
   --offline                  Never fetch remote content: the integrate_shieldlabs prompt
                              uses its built-in guide (always the case with --transport http)
@@ -272,7 +272,7 @@ Environment of --mode public (the settings above are not used):
   SHIELDLABS_AUTH_ISSUER          OAuth authorization server (default: SHIELDLABS_PORTAL_URL)
   MCP_GATEWAY_KEY                 kid:secret that signs every request to the account API
 
-Tools:
+Local tools (hosted tools are listed by MCP tools/list):
   ${ALL_TOOL_NAMES.join('\n  ')}
 
 Docs: https://docs.shieldlabs.ai  Support: contact@shieldlabs.ai

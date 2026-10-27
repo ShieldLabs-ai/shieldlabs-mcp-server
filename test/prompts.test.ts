@@ -68,7 +68,7 @@ describe('integrate_shieldlabs', () => {
         }
       }
       const setup = promptText(await client.getPrompt({ name: 'integrate_shieldlabs' }));
-      expect(setup).toContain('identifications.get(requestId)');
+      expect(setup).toContain('identifications.get(identificationId)');
       if (enabled.includes(TOOL_NAMES.getIdentification))
         expect(setup).toContain(TOOL_NAMES.getIdentification);
       else {
@@ -125,28 +125,25 @@ describe('integrate_shieldlabs', () => {
     connected = await connect({}, {}, { offline: true });
     const offline = promptText(await connected.client.getPrompt({ name: 'integrate_shieldlabs' }));
     expect(offline).toContain('Guide source: built-in guide of the ShieldLabs MCP server');
-    expect(offline).toContain('identifications.get(requestId)');
-    expect(offline).toContain('trusted 0-29, suspicious 30-59, dangerous 60-100');
-    // Delivery and timing facts.
-    expect(offline).toContain(
-      'one delivery\nper identification today (1 second timeout, no retries)',
-    );
-    expect(offline).toContain('idempotent on data.request_id');
-    expect(offline).toContain('Use the History API for\nguaranteed reads');
-    expect(offline).toContain(
-      'the History row appears about 1 to 3 seconds\n  after the browser call',
-    );
-    expect(offline).toContain('identifyOnInteraction');
-    // The same patterns as the SDK quick starts.
-    expect(offline).toContain('never await it at the top level');
+    expect(offline).toContain('identifications.get(identificationId)');
+    for (const text of [
+      'Trusted 0-29',
+      'Suspicious 30-59',
+      'Dangerous 60-100',
+      "verified envelope's opaque event_id",
+      'identification.identification_id',
+      'Scoring is asynchronous',
+      'never await it at the top level',
+      'isReplay: () => !firstUse',
+      'Atomically claim a nonempty',
+      'registered',
+      'sign in or create a ShieldLabs account',
+      'Wait for approval',
+    ]) {
+      expect(offline).toContain(text);
+    }
     expect(offline).not.toMatch(/^const agent = await load/m);
-    expect(offline).toContain('isReplay: () => !firstUse');
-    expect(offline).toContain('atomic insert-if-absent');
-    expect(offline).toContain('cannot contain "/" or be "." or ".."');
-    expect(offline).toContain('Test on a registered domain');
-    expect(offline).toContain(
-      "SHIELDLABS_WEBHOOK_SECRET!.split(',').map((secret) => secret.trim())",
-    );
+    expect(offline).not.toContain('idempotent on data.request_id');
   });
 
   it('uses the built-in guide for every unusable response', async () => {
@@ -190,7 +187,7 @@ describe('integrate_shieldlabs', () => {
 
   it('fetches the setup skill of the pinned skills release, never a branch', () => {
     expect(SETUP_SKILL_URL).toBe(
-      'https://raw.githubusercontent.com/ShieldLabs-ai/shieldlabs-skills/refs/tags/v1.0.0/skills/shieldlabs-setup/SKILL.md',
+      'https://raw.githubusercontent.com/ShieldLabs-ai/skills/refs/tags/v1.1.0/skills/shieldlabs-setup/SKILL.md',
     );
   });
 

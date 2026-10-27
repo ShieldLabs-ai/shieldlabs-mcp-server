@@ -45,7 +45,7 @@ async function connectClient(token: string, deps: PublicDependencies): Promise<C
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
     fetch: (url, init) => handle(new Request(url, init), deps),
   });
-  await client.connect(transport as never);
+  await client.connect(transport);
   return client;
 }
 
@@ -285,7 +285,7 @@ describe('public mode: authentication', () => {
 });
 
 describe('public mode: MCP requests', () => {
-  it('offers shieldlabs_check_connection only, with no prompts or resources', async () => {
+  it('offers hosted operations, prompts and resources', async () => {
     const deps = publicDeps(fakePortal().fetch);
     const client = await connectClient(TOKEN, deps);
     expect(client.getServerVersion()).toMatchObject({
@@ -295,12 +295,12 @@ describe('public mode: MCP requests', () => {
     });
     const capabilities = client.getServerCapabilities()!;
     expect(capabilities.tools).toBeDefined();
-    expect(capabilities.prompts).toBeUndefined();
-    expect(capabilities.resources).toBeUndefined();
+    expect(capabilities.prompts).toBeDefined();
+    expect(capabilities.resources).toBeDefined();
     expect(client.getInstructions()).toContain(CHECK_CONNECTION_TOOL);
     expect(client.getInstructions()).not.toContain('SHIELDLABS_');
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(1);
+    expect(tools).toHaveLength(21);
     expect(tools[0]).toMatchObject({
       name: CHECK_CONNECTION_TOOL,
       inputSchema: { type: 'object', properties: {} },
@@ -322,7 +322,7 @@ describe('public mode: MCP requests', () => {
       checked_at: new Date(NOW).toISOString(),
     });
     expect(result.content[0].text).toContain('The connection to ShieldLabs works');
-    expect(result.content[0].text).toContain('later release');
+    expect(result.content[0].text).toContain('shieldlabs_list_domains');
     expect(portal.calls.length).toBe(pingsBefore + 1);
     await client.close();
 
@@ -403,6 +403,46 @@ describe('public mode: MCP requests', () => {
     const invalid = await handle(mcpRequest('{not json', bearer(TOKEN)), deps);
     expect(invalid.status).toBe(400);
     expect(((await invalid.json()) as any).error.code).toBe(-32700);
+  });
+
+  it.each([
+    '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"shieldlabs_patch_domain","arguments":{"enabled":true,"enabled":false}}}',
+    '{"jsonrpc":"2.0","id":3,"method":"tools/list","method":"tools/call"}',
+    '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"shieldlabs_patch_domain","arguments":{"enabled":true,"\\u0065nabled":false}}}',
+  ])('refuses duplicate members before dispatch: %s', async (raw) => {
+    const spy = vi.spyOn(WebStandardStreamableHTTPServerTransport.prototype, 'handleRequest');
+    try {
+      const portal = fakePortal();
+      const deps = publicDeps(portal.fetch);
+      const response = await handle(mcpRequest(raw, bearer(TOKEN)), deps);
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as any).error.code).toBe(-32700);
+      expect(spy).not.toHaveBeenCalled();
+      expect(portal.calls.every((call) => call.init.method === 'GET')).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('rejects invalid UTF-8 before dispatch', async () => {
+    const spy = vi.spyOn(WebStandardStreamableHTTPServerTransport.prototype, 'handleRequest');
+    try {
+      const request = new Request(`${PUBLIC_ORIGIN}/mcp`, {
+        method: 'POST',
+        headers: {
+          ...bearer(TOKEN),
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+        },
+        body: new Uint8Array([0x7b, 0x22, 0xff, 0x22, 0x3a, 0x31, 0x7d]),
+      });
+      const response = await handle(request, publicDeps(fakePortal().fetch));
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as any).error.code).toBe(-32700);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('refuses JSON-RPC batches before any tool runs', async () => {

@@ -90,6 +90,14 @@ const HISTORY_PLACEHOLDER_KEY = 'sec_00000000-00000000-00000000';
  * score_details, flags from the is_* columns), by serving the row from memory: no network access.
  */
 export async function normalizeHistoryRow(row: JsonObject): Promise<Identification> {
+  // History has used both names for the same identifier. Adapt the wire row before the
+  // pinned SDK normalizes it; never infer an ID from the search argument.
+  const requestId =
+    typeof row.request_id === 'string' && row.request_id !== ''
+      ? row.request_id
+      : typeof row.identification_id === 'string'
+        ? row.identification_id
+        : '';
   const offline = new ShieldLabs({
     apiKey: HISTORY_PLACEHOLDER_KEY,
     baseUrl: 'http://127.0.0.1',
@@ -99,11 +107,12 @@ export async function normalizeHistoryRow(row: JsonObject): Promise<Identificati
         status: 200,
         ok: true,
         headers: { get: () => null },
-        text: () => Promise.resolve(JSON.stringify({ data: [row], total: 1 })),
+        text: () =>
+          Promise.resolve(JSON.stringify({ data: [{ ...row, request_id: requestId }], total: 1 })),
       }),
   });
   const page = await offline.history.search('request_id', NIL_UUID, { limit: 1 });
-  return page.data[0] as Identification;
+  return { ...(page.data[0] as Identification), request_id: requestId };
 }
 
 function optionalString(value: unknown): string | null {

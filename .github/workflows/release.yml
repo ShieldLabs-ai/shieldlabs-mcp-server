@@ -1,10 +1,6 @@
 name: Release
 
-# Publishes @shieldlabs-ai/mcp to npm and the image to ghcr.io when a maintainer pushes a tag such as
-# v1.0.0. The build job checks, builds and packs with read-only permissions; the publish jobs run
-# in the "npm" and "ghcr" environments (add required reviewers to them in the repository settings)
-# and need the NPM_TOKEN secret (the image uses the built-in GITHUB_TOKEN). Safe to re-run: a
-# version that is already on npm is skipped, and the image tags are pushed again.
+# Publish the checked npm artifact after a maintainer tags a reviewed release commit.
 on:
   push:
     tags: ['v*']
@@ -25,7 +21,7 @@ jobs:
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Check that the tag matches package.json
@@ -42,6 +38,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      - run: npm run test:worker
+      - run: npm run worker:check
       - run: npm run build
       - run: node dist/index.js --version
 
@@ -78,7 +76,7 @@ jobs:
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Publish unless this version is already on npm
@@ -91,49 +89,3 @@ jobs:
             exit 0
           fi
           npm publish "shieldlabs-ai-mcp-${VERSION}.tgz" --provenance --access public
-
-  image:
-    name: Push the container image
-    needs: build
-    runs-on: ubuntu-latest
-    environment: ghcr
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          persist-credentials: false
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: dist
-          path: dist/
-
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
-        with:
-          images: ghcr.io/shieldlabs-ai/shieldlabs-mcp
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          provenance: mode=max
-          sbom: true

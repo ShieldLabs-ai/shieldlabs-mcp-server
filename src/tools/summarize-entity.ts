@@ -116,13 +116,13 @@ function dimensionLine(label: string, dimension: Summary['devices']): string {
   return `- ${label}: ${dimension.distinct} distinct (${top}${more})`;
 }
 
-function summaryMarkdown(output: SummaryOutput): string {
+export function summaryMarkdown(output: SummaryOutput): string {
   const { lookup, window, summary } = output;
   const { risk } = summary;
-  const lines = [`# Summary of ${lookup.type} ${code(lookup.value)}`, '', COMPUTED_FROM_NOTE, ''];
+  const lines = [`# Summary of ${lookup.type} ${code(lookup.value)}`, '', output.computed_from, ''];
   if (window.identifications_analyzed === 0) {
     lines.push(
-      `No identifications found for ${lookup.type} ${code(lookup.value)}, so there is nothing to summarize. The Private API Key reads one domain only.`,
+      `No identifications found for ${lookup.type} ${code(lookup.value)}, so there is nothing to summarize in this history window.`,
     );
     return lines.join('\n');
   }

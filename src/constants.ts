@@ -1,7 +1,7 @@
 /** Package name reported in serverInfo. */
 export const SERVER_NAME = 'shieldlabs-mcp';
 /** Version of this server. Kept in sync with package.json (a test checks it). */
-export const SERVER_VERSION = '1.0.0';
+export const SERVER_VERSION = '1.1.0';
 
 export const DOCS_URL = 'https://docs.shieldlabs.ai';
 export const APP_URL = 'https://app.shieldlabs.ai';
@@ -29,8 +29,8 @@ export const PROFILE_CACHE_MS = 60_000;
  * release this server version was tested with: later commits to the skills repository never
  * reach installed servers.
  */
-export const SETUP_SKILL_REF = 'refs/tags/v1.0.0';
-export const SETUP_SKILL_URL = `https://raw.githubusercontent.com/ShieldLabs-ai/shieldlabs-skills/${SETUP_SKILL_REF}/skills/shieldlabs-setup/SKILL.md`;
+export const SETUP_SKILL_REF = 'refs/tags/v1.1.0';
+export const SETUP_SKILL_URL = `https://raw.githubusercontent.com/ShieldLabs-ai/skills/${SETUP_SKILL_REF}/skills/shieldlabs-setup/SKILL.md`;
 export const SETUP_SKILL_TIMEOUT_MS = 3_000;
 export const SETUP_SKILL_CACHE_MS = 60 * 60 * 1000;
 /** Larger bodies are not read to the end: the built-in guide is used instead. */

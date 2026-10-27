@@ -1,3 +1,4 @@
+import { SERVER_VERSION } from '../src/constants.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ALL_TOOL_NAMES, OFFLINE_TOOL_NAMES, TOOL_NAMES } from '../src/constants.js';
 import { connect, FULL_ENV, MOCK_API_KEY, type Connected } from './helpers.js';
@@ -119,7 +120,7 @@ describe('capabilities with every API configured', () => {
     const version = connected.client.getServerVersion();
     expect(version).toMatchObject({
       name: 'shieldlabs-mcp',
-      version: '1.0.0',
+      version: SERVER_VERSION,
       title: 'ShieldLabs',
     });
   });

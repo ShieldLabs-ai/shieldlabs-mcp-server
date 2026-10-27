@@ -1,16 +1,16 @@
 {
   "name": "@shieldlabs-ai/mcp",
-  "version": "1.0.0",
-  "description": "ShieldLabs MCP server: read identifications, search history, summarize users, devices and IPs, explain Risk Scores and verify webhook signatures from any MCP client.",
+  "version": "1.1.0",
+  "description": "ShieldLabs MCP server with hosted OAuth domain/webhook management and identification risk investigation.",
   "license": "MIT",
   "author": "ShieldLabs Inc. <contact@shieldlabs.ai>",
   "homepage": "https://docs.shieldlabs.ai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ShieldLabs-ai/shieldlabs-mcp.git"
+    "url": "git+https://github.com/ShieldLabs-ai/shieldlabs-mcp-server.git"
   },
   "bugs": {
-    "url": "https://github.com/ShieldLabs-ai/shieldlabs-mcp/issues",
+    "url": "https://github.com/ShieldLabs-ai/shieldlabs-mcp-server/issues",
     "email": "contact@shieldlabs.ai"
   },
   "keywords": [
@@ -22,7 +22,7 @@
     "risk-score",
     "fraud-prevention"
   ],
-  "mcpName": "io.github.shieldlabs-ai/shieldlabs-mcp",
+  "mcpName": "io.github.shieldlabs-ai/shieldlabs-mcp-server",
   "type": "module",
   "bin": {
     "shieldlabs-mcp": "dist/index.js"
@@ -34,6 +34,7 @@
     "dist",
     "server.json",
     "README.md",
+    "HOSTED-OPERATIONS.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -65,7 +66,6 @@
     "@cloudflare/vitest-pool-workers": "0.22.0",
     "@cloudflare/workers-types": "^5.20261001.1",
     "@eslint/js": "^9.39.5",
-    "@shieldlabs-ai/node": "1.0.1",
     "@types/node": "^20.19.43",
     "@vitest/coverage-v8": "^4.1.11",
     "ajv": "^8.20.0",
@@ -77,6 +77,7 @@
     "typescript-eslint": "^8.71.0",
     "vite": "^6.4.3",
     "vitest": "^4.1.11",
-    "wrangler": "4.124.0"
+    "wrangler": "4.124.0",
+    "@shieldlabs-ai/node": "1.0.1"
   }
 }

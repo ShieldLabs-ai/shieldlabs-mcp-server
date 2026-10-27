@@ -3,15 +3,15 @@
 # Build dist/ first (npm run build). The bundle already contains @shieldlabs-ai/node, so the image
 # installs only the runtime dependencies of this package.
 #
-#   docker build -t ghcr.io/shieldlabs-ai/shieldlabs-mcp:1.0.0 .
-#   docker run --rm -i -e SHIELDLABS_API_KEY ghcr.io/shieldlabs-ai/shieldlabs-mcp:1.0.0
+#   docker build -t shieldlabs-mcp:local .
+#   docker run --rm -i -e SHIELDLABS_API_KEY shieldlabs-mcp:local
 FROM node:20-alpine
 
 LABEL org.opencontainers.image.title="shieldlabs-mcp" \
       org.opencontainers.image.description="MCP server for ShieldLabs identifications, history, Risk Scores and webhooks" \
-      org.opencontainers.image.source="https://github.com/ShieldLabs-ai/shieldlabs-mcp" \
+      org.opencontainers.image.source="https://github.com/ShieldLabs-ai/shieldlabs-mcp-server" \
       org.opencontainers.image.licenses="MIT" \
-      io.modelcontextprotocol.server.name="io.github.shieldlabs-ai/shieldlabs-mcp"
+      io.modelcontextprotocol.server.name="io.github.shieldlabs-ai/shieldlabs-mcp-server"
 
 ENV NODE_ENV=production
 WORKDIR /app
