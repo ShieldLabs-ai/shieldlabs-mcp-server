@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { SIGNALS } from '@shieldlabs-ai/node';
 import { describe, expect, it } from 'vitest';
 import { DETECTION_FLAG_KEYS } from '../src/catalog/detection-flags.js';
-import { RISK_SIGNAL_CATALOG } from '../src/catalog/risk-signals.js';
+import { canonicalSignalName, RISK_SIGNAL_CATALOG } from '../src/catalog/risk-signals.js';
 import { SERVER_VERSION } from '../src/constants.js';
 import { connect, FULL_ENV } from './helpers.js';
 
@@ -141,9 +141,9 @@ describe('package metadata', () => {
 describe('catalog', () => {
   it('explains every known signal slug and every detection flag', () => {
     const slugs = RISK_SIGNAL_CATALOG.map((info) => info.slug);
-    for (const slug of Object.values(SIGNALS)) expect(slugs).toContain(slug);
+    for (const slug of Object.values(SIGNALS)) expect(slugs).toContain(canonicalSignalName(slug));
     expect(new Set(slugs).size).toBe(slugs.length);
-    expect(DETECTION_FLAG_KEYS).toHaveLength(26);
+    expect(DETECTION_FLAG_KEYS).toHaveLength(24);
     for (const info of RISK_SIGNAL_CATALOG) {
       if (info.related_flag !== null) expect(DETECTION_FLAG_KEYS).toContain(info.related_flag);
       expect(info.meaning.endsWith('.')).toBe(true);

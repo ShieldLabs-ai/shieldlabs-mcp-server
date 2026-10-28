@@ -1,4 +1,4 @@
-import type { DetectionFlags } from '@shieldlabs-ai/node';
+import type { DetectionFlagKey } from './detection-flags.js';
 
 export type RiskSignalGroup =
   'network' | 'consistency' | 'environment' | 'automation' | 'correction' | 'marker';
@@ -13,7 +13,7 @@ export interface RiskSignalInfo {
   /** Current production weight, or null when the weight varies. The identification's own weight wins. */
   typical_weight: number | null;
   /** The detection flag that usually comes with this risk signal, if any. */
-  related_flag: keyof DetectionFlags | null;
+  related_flag: DetectionFlagKey | null;
   /** What the risk signal indicates. */
   meaning: string;
   /** How to read it next to other risk signals. */
@@ -99,11 +99,11 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
       'Near-certain non-human traffic. It counts independently of the connection type, also next to Tor.',
   },
   {
-    slug: 'stun_not_checked',
-    label: 'STUN not Checked',
+    slug: 'network_check_incomplete',
+    label: 'Network Check Incomplete',
     group: 'environment',
     typical_weight: 30,
-    related_flag: 'stun_not_checked',
+    related_flag: 'network_check_incomplete',
     meaning:
       'The network path check did not complete, so the connection could not be fully verified.',
     reading:
@@ -116,9 +116,9 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     typical_weight: -30,
     related_flag: null,
     meaning:
-      'A correction: the network check completed after the first score and cancels stun_not_checked.',
+      'A correction: the network check completed after the first score and cancels network_check_incomplete.',
     reading:
-      'A negative weight that appears together with stun_not_checked. It has no detection_flags key.',
+      'A negative weight that appears together with network_check_incomplete. It has no detection_flags key.',
   },
   {
     slug: 'os_not_detected',
@@ -134,7 +134,7 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     label: 'Browser VPN/Proxy',
     group: 'network',
     typical_weight: 30,
-    related_flag: 'browser_vpn_proxy',
+    related_flag: 'vpn',
     meaning: 'An in-browser VPN or proxy extension is in use, rather than a system-wide VPN.',
     reading:
       'Stands in for the proxy, datacenter, abuser, operating system, network check and timezone weights. Not added together with anti-detect browser or JavaScript disabled.',
@@ -150,11 +150,11 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
       'Common and often legitimate (corporate or privacy use), so a light signal on its own. It stands in for the proxy, datacenter, abuser, operating system, network check and timezone weights; anti-detect browser still adds on top.',
   },
   {
-    slug: 'privacy_relay',
+    slug: 'private_relay',
     label: 'Privacy Relay',
     group: 'network',
     typical_weight: 15,
-    related_flag: 'privacy_relay',
+    related_flag: 'private_relay',
     meaning: 'The connection goes through iCloud Private Relay or a similar privacy relay.',
     reading:
       'Mainstream and privacy-driven. When it is present, other network, operating system and anti-detect weights are not added next to it.',
@@ -173,7 +173,7 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     label: 'Datacenter IP',
     group: 'network',
     typical_weight: 10,
-    related_flag: 'datacenter_ip',
+    related_flag: null,
     meaning:
       'The IP address belongs to a datacenter or hosting network rather than a home or mobile provider.',
     reading:
@@ -184,7 +184,7 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     label: 'Abuser Flag',
     group: 'network',
     typical_weight: 10,
-    related_flag: 'abuser',
+    related_flag: null,
     meaning: 'The IP address has a record of abuse in IP reputation data.',
     reading: 'Prior abuse on the address. Read it together with the other network risk signals.',
   },
@@ -198,22 +198,43 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     reading: 'A light location signal that can be innocent (travel), so weigh it with the rest.',
   },
   {
+    slug: 'latency_test',
+    label: 'Latency test',
+    group: 'network',
+    typical_weight: 60,
+    related_flag: 'latency_test',
+    meaning: 'The network latency test indicates a relayed connection.',
+    reading: 'Use the returned weight; do not infer a latency threshold from this signal.',
+  },
+  {
     slug: 'rate_limited',
-    label: 'Rate-limit marker',
+    label: 'Rate limited',
     group: 'marker',
     typical_weight: 999,
-    related_flag: null,
+    related_flag: 'rate_limited',
     meaning:
-      'Not a risk signal: it comes with the 999 marker written when the visitor IP was temporarily banned after too many identifications.',
+      'The address is restricted for exceeding the request rate. The separate value 999 is outside the 0-100 Risk Score scale.',
     reading:
       '999 is not a Risk Score and not a band. Skip this entry when you log or count risk signals.',
   },
 ];
 
+const SIGNAL_ALIASES = new Map([
+  ['privacy_relay', 'private_relay'],
+  ['stun_not_checked', 'network_check_incomplete'],
+  ['ws_tcp_latency', 'latency_test'],
+  ['banned_ip', 'rate_limited'],
+]);
+
+/** Canonical public names for display; never applied to signed raw webhook bytes. */
+export function canonicalSignalName(name: string): string {
+  return SIGNAL_ALIASES.get(name) ?? name;
+}
+
 const BY_SLUG = new Map(RISK_SIGNAL_CATALOG.map((info) => [info.slug, info]));
 
 export function riskSignalInfo(slug: string): RiskSignalInfo | undefined {
-  return BY_SLUG.get(slug);
+  return BY_SLUG.get(canonicalSignalName(slug));
 }
 
 /** Explanation used for a signal name this catalog does not know. */

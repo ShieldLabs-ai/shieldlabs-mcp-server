@@ -1,6 +1,7 @@
 import { NIL_UUID, type Identification } from '@shieldlabs-ai/node';
 import { z } from 'zod';
 import { bandOf } from './catalog/bands.js';
+import { canonicalSignalName } from './catalog/risk-signals.js';
 import { CURRENT_DETECTION_FLAG_KEYS } from './catalog/detection-flags.js';
 import {
   code,
@@ -157,7 +158,12 @@ export function toIdentificationOutput(identification: Identification): Identifi
     // History rows carry internal score-detail text in `description`; it is not meant to be
     // shown to users, so this server returns the slug and weight only (as webhooks do).
     signals: signals.map((signal, index) => ({
-      name: boundValue(signal.name, `signals[${index}].name`, MAX_SIGNAL_NAME_LENGTH, changes),
+      name: boundValue(
+        canonicalSignalName(signal.name),
+        `signals[${index}].name`,
+        MAX_SIGNAL_NAME_LENGTH,
+        changes,
+      ),
       weight: Math.trunc(signal.weight),
       description: null,
     })),
