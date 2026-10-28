@@ -1,195 +1,55 @@
-# Hosted operations reference
+# Hosted OAuth MCP operations
 
-This reference describes the tools implemented in this source version. A running
-deployment may expose an earlier version; use MCP discovery to inspect it.
-Source availability does not imply deployment, registry publication or live
-account verification.
+The hosted server exposes 21 tools. Source availability does not imply deployment: verify the deployed dev and production endpoints separately. Every operation uses the authenticated account and only public API routes.
 
 ## Tool inputs
 
-Hosted JSON-RPC bodies must be UTF-8 and reject duplicate object members at any
-depth, including escaped spellings, before dispatch. All tool input objects reject
-unknown fields and require exact, case-sensitive field names. `UUID` means a public UUID string,
-never a database ID. `hostname` is a string of 1–253 characters without a scheme,
-path or embedded credentials. `format` is `"markdown" | "json"`, default
-`"markdown"`. Management operations return JSON. Optional fields are marked `?`.
+Domain and webhook identifiers are public UUIDs. History `domain` is a UUID, not a hostname.
 
-| Exact tool name | Input type |
-| --- | --- |
-| `shieldlabs_check_connection` | `{}` (arguments may be omitted) |
-| `shieldlabs_list_domains` | `{}` |
-| `shieldlabs_get_domain` | `{domain_id: UUID}` |
-| `shieldlabs_add_domain` | `{domain: hostname, allow_subdomains?: boolean, include_secret?: boolean = false}` |
-| `shieldlabs_patch_domain` | `{domain_id: UUID, enabled?: boolean, allow_subdomains?: boolean, confirm?: true}`; at least one patch field; `enabled:false` requires `confirm:true` |
-| `shieldlabs_delete_domain` | `{domain_id: UUID, confirm: true}` |
-| `shieldlabs_rotate_server_key` | `{domain_id: UUID, confirm: true, include_secret?: boolean = false}` |
-| `shieldlabs_list_webhooks` | `{domain_id: UUID}` |
-| `shieldlabs_get_webhook` | `{domain_id: UUID, webhook_id: UUID}` |
-| `shieldlabs_create_webhook` | `{domain_id: UUID, name: string[1..80 Unicode characters], url: HTTPS_URL[1..512 UTF-8 bytes], include_secret?: boolean = false}` |
-| `shieldlabs_patch_webhook` | `{domain_id: UUID, webhook_id: UUID, name?: string[1..80 Unicode characters], url?: HTTPS_URL[1..512 UTF-8 bytes], confirm?: true}`; at least one patch field; URL requires `confirm:true` |
-| `shieldlabs_delete_webhook` | `{domain_id: UUID, webhook_id: UUID, confirm: true}` |
-| `shieldlabs_enable_webhook` | `{domain_id: UUID, webhook_id: UUID}` |
-| `shieldlabs_disable_webhook` | `{domain_id: UUID, webhook_id: UUID, confirm: true}` |
-| `shieldlabs_rotate_webhook_secret` | `{domain_id: UUID, webhook_id: UUID, confirm: true, include_secret?: boolean = false}` |
-| `shieldlabs_verify_webhook` | `{domain_id: UUID, webhook_id: UUID}` |
-| `shieldlabs_test_webhook` | `{domain_id: UUID, webhook_id: UUID}` |
-| `shieldlabs_search_history` | `{type: Lookup, value: string[1..512], domain?: hostname, limit?: integer[1..100] = 20, offset?: integer[0..MAX_SAFE_INTEGER] = 0, response_format?: format}` |
-| `shieldlabs_get_identification` | `{request_id: UUID, domain?: hostname, wait?: boolean = true, response_format?: format}` |
-| `shieldlabs_summarize_entity` | `{type: Entity, value: string[1..512], domain?: hostname, max_items?: integer[1..500] = 100, response_format?: format}` |
-| `shieldlabs_explain_risk_score` | `{request_id?: UUID, identification?: object or JSON string[0..500000], domain?: hostname, response_format?: format}`; exactly one of request_id/identification |
+| Tool | Inputs |
+|---|---|
+| `shieldlabs_check_connection` | none |
+| `shieldlabs_list_domains` | none |
+| `shieldlabs_get_domain` | domain_id |
+| `shieldlabs_add_domain` | domain hostname, optional allow_subdomains and include_secret |
+| `shieldlabs_patch_domain` | domain_id, enabled and/or allow_subdomains; disabling requires confirm=true |
+| `shieldlabs_delete_domain` | domain_id, confirm=true |
+| `shieldlabs_rotate_server_key` | domain_id, confirm=true, optional include_secret |
+| `shieldlabs_list_webhooks` | domain_id |
+| `shieldlabs_get_webhook` | domain_id, webhook_id |
+| `shieldlabs_create_webhook` | domain_id, name, url, optional multiaccount and include_secret |
+| `shieldlabs_patch_webhook` | domain_id, webhook_id, name/url/multiaccount; URL change requires confirm=true |
+| `shieldlabs_delete_webhook` | domain_id, webhook_id, confirm=true |
+| `shieldlabs_enable_webhook` | domain_id, webhook_id |
+| `shieldlabs_disable_webhook` | domain_id, webhook_id, confirm=true |
+| `shieldlabs_rotate_webhook_secret` | domain_id, webhook_id, confirm=true, optional include_secret |
+| `shieldlabs_verify_webhook` | domain_id, webhook_id |
+| `shieldlabs_test_webhook` | domain_id, webhook_id |
+| `shieldlabs_get_identification` | domain UUID, identification_id, optional wait and paired from/to |
+| `shieldlabs_search_history` | domain UUID, type=identifications/user, optional limit, page_token, from/to, sort, include_total, filter |
+| `shieldlabs_summarize_entity` | domain UUID, type=user/visitor/device/ip, value, optional paired from/to |
+| `shieldlabs_explain_risk_score` | identification_id with domain UUID, or a pasted identification |
 
-`Lookup = "request_id" | "user_hid" | "device_id" | "visitor_id" | "ip" |
-"session_id" | "cookie_id"`. `Entity = "user_hid" | "device_id" | "visitor_id" |
-"ip" | "cookie_id"`. Identifier values are encoded once. Slash, backslash, control
-characters and dot segments are rejected; ID types require UUIDs. IP validity is
-checked locally and by the backend: only IPv4 and IPv4-mapped IPv6 are searchable.
-Mapped addresses are normalized to dotted IPv4. Pure IPv6 is refused locally with
-an actionable `invalid_request` error. Webhook names and URLs are trimmed before
-validation: names count Unicode code points, URLs count UTF-8 bytes.
+Webhook names are trimmed and bounded to 80 Unicode characters. URLs require public HTTPS without credentials and are bounded to 512 UTF-8 bytes. Omitted patch fields are preserved. A subscription-only patch does not change the endpoint. Pure IPv6 is refused locally; IPv4-mapped IPv6 is normalized to IPv4 for IP cards.
 
-History domain selection is delegated to the backend for each read. Omission is
-accepted only with exactly one enabled owned domain; otherwise an actionable
-`domain_required` error asks for a hostname and lists safe available hostnames.
-Management tools always require explicit public IDs, except list/create domain.
+## History output
 
-## Tool output types
+The list API is `/mcp/v1/domains/{domain}/history/{resource}`. It returns `data`, opaque `next_page_token` and an optional total. A card is `/mcp/v1/domains/{domain}/history/{resource}/{id}` and returns `data:card`. Cards contain `type`, `id`, `domain_id`, `domain`, `risk` and `signals`; other fields follow the public entity schema.
 
-Successful tools return `structuredContent` plus bounded text content. Each tool
-publishes its JSON `outputSchema` through MCP discovery.
+MCP get returns `{found:true, identification:card}`. List returns `{resource, data, next_page_token, total?}`. Summary returns `{entity:card, computed_from:"API entity card"}`. Explanation preserves `risk` and sets `weights_available:false` when a card does not include detailed signal weights. No aggregate is recomputed from a single card.
 
-```ts
-type Domain = {
-  id: UUID; domain: string; public_key: string; server_key: string;
-  enabled: boolean; allow_subdomains: boolean; domain_verified: boolean;
-  created_at: string;
-};
-type Webhook = {
-  id: UUID; name: string; url: string; secret: string; enabled: boolean;
-  status: "pending" | "active" | "failing" | "verification_failed" | "disabled";
-  created_at: string; updated_at: string; requests: integer;
-  last_delivery_at: string | null;
-};
-type Sensitive = { sensitive: true; one_time: true; secret_handling: string };
-type Truncated = { truncated?: true; truncation_message?: string };
-type LookupResult = { type: Lookup; value: string };
-```
+An available identification score is `risk.score` with `risk.state:"ok"`. `risk.state:"unavailable"` remains unknown, never 0. `signals.state` and `high_risk_events.state` remain as returned. HRE confidence is separate from Risk Score. Missing flags or client identity are not false/human evidence.
 
-- Check connection: `{connected: boolean, checked_at: string}`.
-- Domain list: `{domains: Domain[]} & Truncated`; domain get/create/patch/rotate:
-  `Domain`, optionally `& Sensitive` on opted-in create/rotate.
-- Webhook list: `{webhooks: Webhook[]} & Truncated`; webhook get/create/patch/
-  enable/disable/verify/rotate: `Webhook`, optionally `& Sensitive` on opted-in
-  create/rotate.
-- Deletes: `{deleted: true}`.
-- Webhook test: `{delivered: boolean, status_code: integer, latency_ms: number,
-  timed_out: boolean}`. Delivery failure can be a successful tool result with
-  `delivered:false`.
-- Search: `{lookup: LookupResult, total: integer, count: integer, offset: integer,
-  limit: integer, has_more: boolean, next_offset?: integer,
-  identifications: Identification[], untrusted_data_note: string} & Truncated`.
-- Identification: `{found: true, identification: Identification,
-  untrusted_data_note: string}`.
-- Summary: `{lookup: {type: Entity,value:string}, computed_from:string,
-  window:{identifications_analyzed:integer,total_matching:integer,max_items:integer,
-  complete:boolean}, summary:Summary, untrusted_data_note:string}`.
-- Risk explanation: the existing `ExplanationSchema` from `src/explain.ts`,
-  including score/band, weighted signals, flag explanations, connection type,
-  notes and source. `IdentificationOutputSchema` and `SummarySchema` are reused
-  from `src/identification.ts` and `src/summarize.ts`; no debug/raw fields are
-  exposed. Those full nested schemas are included in MCP discovery.
-
-Dates from the backend are RFC3339 strings. `server_key` and `secret` are masked
-as `"********"` by default. Only explicit `include_secret:true` on one of the four
-credential-producing tools returns the raw credential in `structuredContent`,
-with `Sensitive` metadata. Text content does not repeat it. The server cannot
-prevent a client recording an opted-in result. The installer must write it
-privately, not echo or log it. Credentials are not cached or retained in server
-context. There is no secret-recovery operation.
+Lists support identifications and user only. Optional RFC3339 from/to must both be supplied; the window includes from and excludes to. Keep query fields unchanged while paging. Use page_token, never offset. Old value-based search and boolean row filters are rejected before requests. Filter by one risk band: `identification.risk_bands` for identifications or `entity.risk_bands` for users. Only the default newest-first sort is supported. Totals can be requested for identifications. Exact entity IDs are read with get/summarize.
 
 ## Resources and prompts
 
-| Exact resource registration name | URI | Content |
-| --- | --- | --- |
-| `identification-schema` | `shieldlabs://contract/identification` | Identification JSON Schema |
-| `webhook-event-schema` | `shieldlabs://contract/webhook-event` | Webhook event JSON Schema |
-| `risk-signals` | `shieldlabs://reference/risk-signals` | Shared local risk catalog JSON |
-| `risk-bands` | `shieldlabs://reference/risk-bands` | Shared three-band catalog JSON |
-| `hosted-identification` | `shieldlabs://domains/{domain}/identifications/{request_id}` | `{identification: Identification}`; explicit hostname and UUID; read once |
+The domain-scoped identification resource uses the same validated card. `investigate_user` and `review_request` require a domain UUID. Setup guidance names only available operations and does not infer a backend verdict from a computed count.
 
-| Exact prompt name | Arguments |
-| --- | --- |
-| `integrate_shieldlabs` | none |
-| `investigate_user` | `{domain: hostname, user_hid: string[1..512]}` |
-| `review_request` | `{domain: hostname, request_id: UUID}` |
+## Credentials, retries and verification
 
-Prompts return one user text message. Hosted integration instructions use the
-registered operations without fetching remote instructions or accepting cabinet
-credentials. Existing local stdio/API-key tools and resource URIs are unchanged.
+Domain/server and webhook credentials are masked. An installer can explicitly opt in to one-time credentials; the client can record them in transcripts. Store privately and do not repeat them. Mutations are not automatically retried; verify state before manually repeating an uncertain write.
 
-## Annotations and transport behavior
+History reads preserve scope and returned IDs, reject malformed states, bound output and respect cancellation, Retry-After and a total read deadline. Oversized pages require a smaller limit rather than truncating rows while reusing an end-of-page cursor.
 
-GET/history/explain tools: read-only, non-destructive and idempotent.
-Create, key/secret rotation, verify and test: non-idempotent. Patch, delete and
-enable/disable are idempotent state operations (a repeat delete can return 404).
-Delete, disable, rotation and both patch tools are conservatively destructive;
-URL changes and domain disable require explicit confirmation at runtime. All
-tools contact external account data, so `openWorldHint:true`.
-
-- All external operation requests target `/mcp/v1`, using the request's access
-  token. Read ping retains v1. Mutations use v2 with the exact serialized body's
-  SHA-256, including empty-body POST and DELETE.
-- Mutations are never retried. Identification polling alone retries transient
-  failures with delays 250/500/1000/1500/2000 ms; 429 polling uses
-  `min(Retry-After, 10 seconds)` and immediately rethrows when that pause cannot
-  fit in the remaining wait budget. The manual error retains the server's
-  advertised recommendation separately. Every poll uses a new nonce. The entire wait, including HTTP and
-  delays, shares a hard 10-second budget; the final poll begins within that
-  budget. Authentication/input errors stop polling immediately.
-- Each authenticated MCP request has its own scheduler and credentials: at most
-  2 backend reads in flight, 5 starts/second and 12 backend operations. Existing
-  ingress token/address rate limiters remain the outer process/isolate budget.
-  Scheduler timers are request-local because workerd cancels timers belonging
-  to completed requests. There is no account data or domain-selection cache.
-- HTTP attempts time out after 10 seconds. MCP/request cancellation aborts
-  queued and active fetches and polling delays. Node client disconnects propagate
-  to the Web Request signal. Listener/timer cleanup runs on completion.
-- Upstream bodies and outgoing mutations are bounded to 1 MiB. Both text and
-  structured tool responses are bounded to 25,000 characters. Error messages
-  use controlled text; upstream errors and result bodies are never logged.
-- The shared SDK is a pinned public npm build dependency. The executable bundles
-  it; workerd resolves its edge export. The History normalizer runs against in-memory rows,
-  not against a legacy API endpoint.
-
-## Verification
-
-Node and workerd suites use an actual MCP Client against a synthetic backend. Tests cover
-signed management requests, input validation, confirmations, secret masking, account isolation,
-History normalization, Markdown/JSON formatting, polling budgets, cancellation and response caps.
-Run the commands in the README on the release commit. Synthetic tests do not establish a fresh
-production OAuth grant or real webhook delivery; test those separately on an authorized account.
-
-## Self-hosted operator configuration
-
-Hosted mode uses `SHIELDLABS_PUBLIC_ORIGIN`, `SHIELDLABS_AUTH_ISSUER`,
-`SHIELDLABS_PORTAL_URL` and a registered `MCP_GATEWAY_KEY` in the operator's secret store.
-The gateway credential authenticates this service to its account backend and is not an
-end-user API key. Configure your own compatible backend or use the managed OAuth endpoint.
-Never copy a production key into a client configuration or a published example.
-
-## Current contract coverage
-
-The 2026-10-28 candidate preserves the public 21-tool surface. Webhook create/patch accept
-optional `multiaccount`; omitted create defaults false and omitted patch preserves state.
-Subscription-only updates do not require a new URL or reset verification. Read back the
-subscription and report backend release-profile unavailability. Never automatically retry writes.
-
-Identification outputs adapt wire `identification_id` to MCP `request_id`, expose 20 current
-flags with null for unavailable values, and retain six legacy compatibility keys. Optional
-`hre`, `client_identity` and owner labels are allowlisted/bounded. Unknown public strings are
-kept; malformed metadata is unavailable with a warning. Claims and verified subjects remain
-separate; missing identity never proves human and provider proof never proves an agent.
-
-HRE snapshots in summaries describe only returned rows, independently of Risk Score. They
-are not recomputed detector verdicts or the separate multi-account group feed. Resources serve
-the public wire schema pinned to shieldlabs-openapi 3fc61efd and derive the MCP output schema
-from the same runtime Zod model. New output fields are optional; review null handling in clients.
+A signed sample test, verification ping and real event delivery are separate checks. A multiaccount subscription does not prove source generation. Validate real group delivery separately from ordinary scored events. The stdio/API-key server uses the same entity contract through `/api/v1`, without OAuth management operations.

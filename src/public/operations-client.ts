@@ -241,11 +241,46 @@ export class OperationsClient {
           pause,
         );
       }
+      const entityCodes = new Set([
+        'invalid_query',
+        'invalid_id',
+        'unsupported_ip_family',
+        'unsupported_relation',
+        'snapshot_required',
+        'snapshot_expired',
+        'snapshot_scope_changed',
+        'coverage_unavailable',
+        'invalid_reader_scope',
+        'ambiguous_device_id',
+        'ambiguous_entity_id',
+        'query_timeout',
+        'temporarily_unavailable',
+        'invalid_domain_scope',
+        'entity_list_disabled',
+        'domain_scope_not_supported',
+        'snapshot_unavailable',
+        'invalid_reader_response',
+        'page_query_mismatch',
+        'invalid_page_token',
+        'outside_retention',
+        'not_found',
+        'endpoint_retired',
+      ]);
+      const errorObject =
+        typeof parsed.error === 'object' && parsed.error !== null
+          ? (parsed.error as Record<string, unknown>)
+          : undefined;
+      if (typeof errorObject?.code === 'string' && entityCodes.has(errorObject.code)) {
+        throw new OperationError(
+          errorObject.code,
+          'History could not complete this read. Check the domain, query and snapshot before retrying.',
+        );
+      }
       const messages: Record<number, [string, string]> = {
         400: ['invalid_request', 'Invalid input. Check the tool fields and domain.'],
         402: [
           'quota_exceeded',
-          'Account identification quota exhausted. Check the plan in ShieldLabs.',
+          'ShieldLabs declined this operation with HTTP 402. The status alone does not establish the cause.',
         ],
         403: ['forbidden', 'This connection cannot access the operation. Reconnect ShieldLabs.'],
         404: [
@@ -255,6 +290,10 @@ export class OperationsClient {
         409: [
           'conflict',
           'Operation conflicts with existing data or plan limits. Read the current state before retrying.',
+        ],
+        410: [
+          'endpoint_retired',
+          'This History endpoint is retired. Update the ShieldLabs client.',
         ],
         413: ['request_too_large', 'Request exceeds the backend body limit.'],
       };

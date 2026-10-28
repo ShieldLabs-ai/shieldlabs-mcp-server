@@ -1,3 +1,4 @@
+import type { ToolName } from '../constants.js';
 import {
   SETUP_SKILL_CACHE_MS,
   SETUP_SKILL_MAX_BYTES,
@@ -5,7 +6,6 @@ import {
   SETUP_SKILL_URL,
 } from '../constants.js';
 import type { GuideResponse, ServerContext } from '../context.js';
-import type { ToolName } from '../constants.js';
 
 /** Concise integration guide used when the published setup skill cannot be fetched. */
 export const BUILT_IN_SETUP_GUIDE = `# Integrate ShieldLabs (built-in guide)
@@ -44,8 +44,7 @@ uses its own domain keys. Do not automatically rotate an existing masked key.
 
 ## 2. Browser
 
-Detect the framework and install its matching browser SDK. These examples require compatible
-JS/Node SDK 1.1.0 or later; verify registry availability and installed types before writing code.
+Detect the framework and install its matching browser SDK. Verify the installed types before writing code.
 Use the plain JavaScript package when no framework is present:
 
 \`\`\`ts
@@ -69,17 +68,23 @@ arrival order. Do not invent an SDK tag. Group HRE events have no identification
 ## 3. Existing backend
 
 \`\`\`ts
-import { ShieldLabs, evaluateIdentification } from '@shieldlabs-ai/node';
-const shieldlabs = new ShieldLabs({ apiKey: process.env.SHIELDLABS_API_KEY! });
-const identification = await shieldlabs.identifications.get(identificationId);
-// Atomically claim a nonempty identification.identification_id for replay protection.
-const firstUse = identification !== null && identification.identification_id !== '' &&
-  await claimIdentificationId(identification.identification_id);
-const verdict = evaluateIdentification(identification, {
-  maxAge: 5 * 60_000,
-  isReplay: () => !firstUse,
+// Run only on the backend. The domain is the public UUID from MCP or the dashboard.
+const domainId = process.env.SHIELDLABS_DOMAIN_ID!;
+const endpoint = new URL(
+  '/api/v1/domains/' + encodeURIComponent(domainId) + '/history/identifications/' + encodeURIComponent(identificationId),
+  'https://account.shieldlabs.ai',
+);
+const response = await fetch(endpoint, {
+  headers: { Authorization: 'Bearer ' + process.env.SHIELDLABS_API_KEY! },
+  signal: AbortSignal.timeout(5000), redirect: 'error', cache: 'no-store',
 });
-// Apply the authorized application's policy to verdict and identification.
+if (!response.ok) throw new Error('Identification could not be verified');
+const { data: card } = await response.json();
+if (card.id !== identificationId || card.domain_id !== domainId || card.type !== 'identification')
+  throw new Error('Identification scope does not match');
+// Atomically claim card.id for replay protection and check card.created_at freshness.
+// Only use card.risk.score when card.risk.state === 'ok'.
+// Keep signals/HRE availability as returned. An unavailable risk is unverified.
 \`\`\`
 
 Missing, stale or replayed results are unverified. Risk bands are Trusted 0-29, Suspicious 30-59
@@ -97,7 +102,7 @@ check; Test is a sample delivery. Neither proves that a real scored identificati
 ## 5. Verify
 
 Trigger one fresh visit or protected action. Capture its actual browser identificationId and
-read the same UUID through MCP (request_id with wait=true) or the dashboard, and through the
+read the same UUID through MCP (identification_id with wait=true) or the dashboard, and through the
 backend when configured. Scoring is asynchronous: wait within the supported budget and retry
 boundedly if still pending. Inspect Risk Score, flags, hostname and timestamps. Empty detailed
 weights do not mean a zero score. Report each check as passed, failed or not configured; never

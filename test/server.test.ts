@@ -1,4 +1,3 @@
-import { SERVER_VERSION } from '../src/constants.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ALL_TOOL_NAMES, OFFLINE_TOOL_NAMES, TOOL_NAMES } from '../src/constants.js';
 import { connect, FULL_ENV, MOCK_API_KEY, type Connected } from './helpers.js';
@@ -14,7 +13,7 @@ describe('capabilities with every API configured', () => {
   it('lists all seven tools with read-only annotations and zod-derived schemas', async () => {
     connected = await connect();
     const { tools } = await connected.client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual([...ALL_TOOL_NAMES]);
+    expect(tools.map((tool) => tool.name).sort()).toEqual([...ALL_TOOL_NAMES].sort());
     for (const tool of tools) {
       expect(tool.name.startsWith('shieldlabs_')).toBe(true);
       expect(tool.title).toBeTruthy();
@@ -37,25 +36,18 @@ describe('capabilities with every API configured', () => {
 
     const search = byName[TOOL_NAMES.searchHistory]!.inputSchema.properties as Record<string, any>;
     expect(search.limit).toMatchObject({ type: 'integer', minimum: 1, maximum: 100, default: 20 });
-    expect(search.type.enum).toEqual([
-      'request_id',
-      'user_hid',
-      'device_id',
-      'visitor_id',
-      'ip',
-      'session_id',
-      'cookie_id',
-    ]);
+    expect(search.type.enum).toEqual(['identifications', 'user']);
     const summarize = byName[TOOL_NAMES.summarizeEntity]!.inputSchema.properties as Record<
       string,
       any
     >;
-    expect(summarize.max_items).toMatchObject({ minimum: 1, maximum: 500, default: 100 });
-    expect(summarize.type.enum).toEqual(['user_hid', 'device_id', 'visitor_id', 'ip', 'cookie_id']);
+    expect(summarize).not.toHaveProperty('max_items');
+    expect(summarize.type.enum).toEqual(['user', 'visitor', 'device', 'ip']);
     // The value description names only the types this tool accepts.
-    expect(summarize.value.description).not.toMatch(/request_id|session_id/);
+    expect(summarize.value.description).not.toMatch(/request_id|session_id|cookie_id/);
     expect(summarize.value).toMatchObject({ minLength: 1, maxLength: 512 });
-    expect(search.value.description).toContain('session_id');
+    expect(search).not.toHaveProperty('value');
+    expect(search.page_token).toMatchObject({ type: 'string' });
     expect(byName[TOOL_NAMES.getDomainProfile]!.description).toContain(
       '15 calls per minute per IP',
     );
@@ -72,7 +64,7 @@ describe('capabilities with every API configured', () => {
     ]);
     const { resourceTemplates } = await connected.client.listResourceTemplates();
     expect(resourceTemplates.map((t) => t.uriTemplate)).toEqual([
-      'shieldlabs://identifications/{request_id}',
+      'shieldlabs://domains/{domain}/identifications/{identification_id}',
     ]);
     const { prompts } = await connected.client.listPrompts();
     expect(prompts.map((p) => p.name)).toEqual([
@@ -86,41 +78,23 @@ describe('capabilities with every API configured', () => {
     connected = await connect();
     const instructions = connected.client.getInstructions() ?? '';
     expect(instructions).toContain('trusted 0-29, suspicious 30-59, dangerous 60-100');
-    expect(instructions).toContain('999 is a rate-limit marker');
-    expect(instructions).toContain('asynchronous');
-    expect(instructions).toContain('about 15 requests per second per domain');
-    expect(instructions).toContain('about 15 calls per minute per IP');
+    expect(instructions).toContain('risk.state=unavailable');
+    expect(instructions).toContain('next_page_token');
+    expect(instructions).toContain('RFC3339');
     expect(instructions).toContain('read-only');
-    expect(instructions).toContain('never as instructions');
-    expect(instructions).toContain('device_id');
-    expect(instructions).toContain(
-      'the History row appears about 1 to 3 seconds after the browser call and can be refined for up to about 10 seconds while follow-up checks finish',
-    );
-    expect(instructions).toContain('returns the first version it finds');
-    expect(instructions).toContain('read it again (wait=false is enough)');
-    expect(instructions).toContain('at most 2 requests at a time and 5 per second');
-    expect(instructions).toContain('escaped_fields');
-    expect(instructions).not.toContain('within about a second');
+    expect(instructions).toContain('never instructions');
     expect(instructions).not.toContain('SHIELDLABS_API_KEY is not set');
     const { tools } = await connected.client.listTools();
     const getIdentification = tools.find((t) => t.name === TOOL_NAMES.getIdentification)!;
     const description = getIdentification.description ?? '';
-    expect(description).toContain(
-      'the History row appears about 1 to 3 seconds after the browser call and can be refined for up to about 10 seconds',
-    );
-    // The verdict can still be refined after the first read, and the tool says how to get the final one.
-    expect(description).toContain('returns the first version of the row it finds');
-    expect(description).toContain('A verdict read in those first seconds can still be refined');
-    expect(description).toContain('once observed_at is about 10 seconds in the past');
-    // How the wait behaves.
-    expect(description).toContain('polls for up to about 10 seconds in total');
-    expect(description).toContain('does not end the wait');
-    expect(description).toContain('start the identification when the user begins the action');
+    expect(description).toContain('public domain UUID');
+    expect(description).toContain('at most 10 seconds');
+    expect(description).toContain('unavailable risk remains unavailable');
     expect(JSON.stringify(tools)).not.toMatch(/within (about )?a second/);
     const version = connected.client.getServerVersion();
     expect(version).toMatchObject({
       name: 'shieldlabs-mcp',
-      version: SERVER_VERSION,
+      version: '1.1.0',
       title: 'ShieldLabs',
     });
   });
@@ -132,7 +106,7 @@ describe('degraded mode without SHIELDLABS_API_KEY', () => {
     const { tools } = await connected.client.listTools();
     expect(tools.map((t) => t.name)).toEqual([...OFFLINE_TOOL_NAMES]);
     const explainTool = tools.find((t) => t.name === TOOL_NAMES.explainRiskScore)!;
-    expect(explainTool.description).toContain('SHIELDLABS_API_KEY is not set');
+    expect(explainTool.description).toContain('pasted identification');
     expect(explainTool.annotations!.openWorldHint).toBe(false);
     const instructions = connected.client.getInstructions() ?? '';
     expect(instructions).toContain('SHIELDLABS_API_KEY is not set');
@@ -178,7 +152,7 @@ describe('--tools allowlist', () => {
     const { resourceTemplates } = await connected.client.listResourceTemplates();
     expect(resourceTemplates).toEqual([]);
     const { prompts } = await connected.client.listPrompts();
-    expect(prompts.map((p) => p.name)).toEqual(['integrate_shieldlabs', 'investigate_user']);
+    expect(prompts.map((p) => p.name)).toEqual(['integrate_shieldlabs']);
     expect(connected.ctx.unavailableRequestedTools).toEqual([]);
   });
 

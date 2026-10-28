@@ -247,15 +247,17 @@ export function summarize(items: readonly IdentificationOutput[]): Summary {
       ))
         identityVerified.add(value);
     }
-    const band = bandOf(item.risk_score);
-    if (band === 'rate_limited') {
-      rateLimitMarkers++;
-    } else {
-      bandCounts[band]++;
-      worst = worseBand(worst, band);
-      scoreSum += item.risk_score;
-      scored++;
-      maxScore = maxScore === null ? item.risk_score : Math.max(maxScore, item.risk_score);
+    if (item.risk_score !== null) {
+      const band = bandOf(item.risk_score);
+      if (band === 'rate_limited') {
+        rateLimitMarkers++;
+      } else {
+        bandCounts[band]++;
+        worst = worseBand(worst, band);
+        scoreSum += item.risk_score;
+        scored++;
+        maxScore = maxScore === null ? item.risk_score : Math.max(maxScore, item.risk_score);
+      }
     }
 
     if (item.observed_at !== null) {

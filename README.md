@@ -1,137 +1,168 @@
 # ShieldLabs MCP server
 
-Connect coding agents to ShieldLabs visitor identification, Risk Scores, domains and webhooks.
-Use the managed OAuth service, or build the source for your own environment.
+Identification, risk signals and risk scoring through hosted OAuth MCP or a local server.
 
-- **Managed MCP:** https://mcp.shieldlabs.ai/mcp
-- **Skills and plugin:** https://github.com/ShieldLabs-ai/skills
-- **Documentation:** https://docs.shieldlabs.ai
-- **Dashboard:** https://app.shieldlabs.ai
+## How it fits
 
-## Connect with OAuth
+The browser SDK returns an identification ID. Your backend or AI assistant reads the result through the public History API, or receives a signed webhook. A UUID by itself does not prove that ingest succeeded.
 
-The managed server uses Streamable HTTP and ShieldLabs OAuth. No domain API key belongs in
-its MCP configuration. Sign in or create a ShieldLabs account in the authorization flow,
-then approve access. Reuse an existing connection.
+Hosted OAuth offers **21 tools** for domain setup, webhook management and History reads. Local stdio and single-tenant API-key HTTP mode remain read-only and expose seven tools when both API credentials are configured. The [hosted operations reference](HOSTED-OPERATIONS.md) describes every operation.
 
-### Claude Code
+## Install
 
-```sh
-claude mcp add --transport http shieldlabs https://mcp.shieldlabs.ai/mcp
+Use an MCP client with a remote streamable HTTP server and OAuth:
+
+```text
+https://mcp.shieldlabs.ai/mcp
 ```
 
-Open `/mcp`, select ShieldLabs and authenticate.
+Sign in or register in the browser and approve the connection. If the client does not load new tools automatically, restart that client and continue the same conversation. Keep OAuth approval in the browser that started it.
 
-### Codex
-
-```sh
-codex mcp add shieldlabs --url https://mcp.shieldlabs.ai/mcp
-codex mcp login shieldlabs --no-browser
-```
-
-Open the fresh authorization URL in your browser and complete sign-in or registration and
-consent. Keep the flow in one browser. Never paste passwords, OAuth codes or tokens into chat.
-
-### Cursor and other clients
+For local stdio:
 
 ```json
 {
   "mcpServers": {
-    "shieldlabs": { "type": "http", "url": "https://mcp.shieldlabs.ai/mcp" }
+    "shieldlabs": {
+      "command": "npx",
+      "args": ["-y", "@shieldlabs-ai/mcp"],
+      "env": { "SHIELDLABS_API_KEY": "sec_your_server_key" }
+    }
   }
 }
 ```
 
-Connect from the client's MCP settings and authorize in your browser. VS Code uses `servers`
-in `.vscode/mcp.json` instead of `mcpServers`. Client examples are in [examples/hosted](examples/hosted).
+## Quick start
 
-## Hosted tools
+1. Check the hosted connection and call `shieldlabs_list_domains`.
+2. Use the selected domain's public UUID for every History read. A hostname is not a History selector.
+3. Capture an actual browser identification ID. Read it with `shieldlabs_get_identification`, using `domain`, `identification_id` and optionally `wait:true`.
+4. Read the returned card's `id`, `domain_id`, `risk.state`, `risk.score` and `signals.state`. An unavailable risk remains unknown; it is never substituted with Score 0.
 
-The managed server exposes **21 tools**.
-
-| Area | Tools, prefixed with `shieldlabs_` |
-|---|---|
-| Connection | `check_connection` |
-| Domains | `list_domains`, `get_domain`, `add_domain`, `patch_domain`, `delete_domain`, `rotate_server_key` |
-| Webhooks | `list_webhooks`, `get_webhook`, `create_webhook`, `patch_webhook`, `delete_webhook`, `enable_webhook`, `disable_webhook`, `rotate_webhook_secret`, `verify_webhook`, `test_webhook` |
-| Investigation | `get_identification`, `search_history`, `summarize_entity`, `explain_risk_score` |
-
-Start with `shieldlabs_check_connection`, then `shieldlabs_list_domains`. Select the user's
-hostname for History reads and use the returned public UUIDs for management. Destructive changes
-require `confirm:true`. Request `include_secret:true` only when needed to install a credential. Mutations are never automatically retried. Keys are masked;
-only an authorized installer should request a needed one-time credential and store it privately.
-MCP clients may retain tool transcripts; every operation must stay within the user's authorized scope.
-
-[hosted operations reference](HOSTED-OPERATIONS.md) describes exact inputs, outputs, resources and prompts.
-
-Ask your agent to:
-
-- Check the ShieldLabs connection and list my domains.
-- Find this identification on example.com and explain its Risk Score.
-- Summarize recent activity for this user or device, including the returned sample window.
-- Configure this authorized webhook endpoint, then run Verify and Test.
-
-A connection or synthetic Test event does not prove a real visit was identified. Match the browser
-UUID to the same stored identification and score. MCP calls use `request_id`; application SDKs
-may use `identificationId` and `identification_id`. Webhook `event_id` is a separate opaque key.
-
-## Install the integration skills
-
-```sh
-npx skills add https://github.com/ShieldLabs-ai/skills
+```json
+{"domain":"11111111-1111-4111-8111-111111111111","identification_id":"33333333-3333-4333-8333-333333333333","wait":true,"response_format":"json"}
 ```
 
-This installs the eight Agent Skills. Skills-only installation does not create an OAuth grant;
-connect MCP separately. The plugin configuration can load the managed server in supported clients.
-The app's SDK keys are separate from MCP sign-in.
+## Guide
+
+### Review one identification
+
+`shieldlabs_get_identification` returns `{found:true, identification:card}`. Cards use `type:"identification"`, `id` and nested `risk`, not the legacy row format. `wait:true` retries reads of the same ID within a ten-second total deadline. It never starts another browser identification. Retry-After and cancellation are respected.
+
+`shieldlabs_explain_risk_score` accepts a domain UUID plus `identification_id`, or a pasted identification. It preserves unknown risk and says when detailed signal weights are unavailable. It also accepts scored webhook payloads for offline explanation. Missing weights do not establish that nothing contributed to a nonzero score.
+
+### List entities
+
+`shieldlabs_search_history` lists `identifications` or `user` in a domain. It does not require a card ID:
+
+```json
+{"domain":"11111111-1111-4111-8111-111111111111","type":"identifications","limit":20,"response_format":"json"}
+```
+
+The result contains `data`, `next_page_token` and an optional API-provided `total`. Preserve the same resource, window, filter, sort and limit when passing `next_page_token` as `page_token`. Tokens are opaque. The server can invalidate them after a restart; do not silently merge a fresh traversal into an earlier snapshot.
+
+Optional `from` and `to` are paired RFC3339 timestamps. The window includes `from` and excludes `to`. `filter` accepts one risk band per request; use `identification.risk_bands` for identifications and `entity.risk_bands` for users. Lists use the default newest-first sort; totals are available for identification lists. Read an exact entity through get/summarize:
+
+```json
+{"domain":"11111111-1111-4111-8111-111111111111","type":"identifications","filter":{"identification":{"risk_bands":["dangerous"]}},"from":"2026-10-27T00:00:00Z","to":"2026-10-28T00:00:00Z"}
+```
+
+The old `value`, `offset`, `score_from`, `score_to` and boolean row-search fields are rejected. Visitor, device and IP resources have cards, not lists.
+
+### Read an account, device, visitor or IP card
+
+`shieldlabs_summarize_entity` reads the backend aggregate card:
+
+```json
+{"domain":"11111111-1111-4111-8111-111111111111","type":"user","value":"exact-user-hid","response_format":"json"}
+```
+
+The result is `{entity:card, computed_from:"API entity card"}`. It preserves the API's identification count, risk, related counts and High-Risk Events availability. One card is not one identification, and it does not enumerate the underlying history. No client-computed account counts or band split are invented.
+
+### Webhooks and setup
+
+Hosted tools can create and verify a receiver, send a signed test, read delivery status, opt into `multiaccount` events and rotate credentials with confirmation. A sample test does not prove real delivery. HRE confidence is separate from Risk Score; unknown metadata does not imply a negative result.
+
+Use `integrate_shieldlabs` to inspect the project and choose installation stages. `investigate_user` and `review_request` require an explicit domain UUID and only mention enabled tools. Server-side integrations read the domain-scoped public History API. Keep the public browser key separate from server credentials.
+
+## Reference
+
+### Local configuration
+
+| Variable | Purpose |
+|---|---|
+| `SHIELDLABS_API_KEY` | Server-only Private API Key for entity History |
+| `SHIELDLABS_API_BASE_URL` | Public History origin, default `https://account.shieldlabs.ai` |
+| `SHIELDLABS_SECRET_KEY` | Optional Management API credential |
+| `SHIELDLABS_DOMAIN` | Registered hostname for the optional Management profile, separate from the History UUID |
+| `SHIELDLABS_MANAGEMENT_BASE_URL` | Optional Management origin |
+| `SHIELDLABS_WEBHOOK_SECRET` | Optional secret for offline signature verification |
+| `SHIELDLABS_MCP_TOKEN` | Bearer protection for local HTTP mode |
+
+History requests require `domain` in tool input. Browser code must never receive the server key or webhook secret. Run `npx -y @shieldlabs-ai/mcp --help` for transport and tool allowlist options.
+
+### Local tools
+
+| Tool | Purpose |
+|---|---|
+| `shieldlabs_get_identification` | Read an identification card by ID and domain UUID |
+| `shieldlabs_search_history` | List identifications or users with opaque pagination |
+| `shieldlabs_summarize_entity` | Read a user, visitor, device or IP aggregate card |
+| `shieldlabs_explain_risk_score` | Explain reported risk and weight availability |
+| `shieldlabs_get_domain_profile` | Read and cache the optional Management profile |
+| `shieldlabs_verify_webhook_signature` | Verify original bytes before interpreting a webhook |
+| `shieldlabs_current_time` | Read UTC time for freshness checks |
+
+### Local resources
+
+The identification template is `shieldlabs://domains/{domain}/identifications/{identification_id}`. It reads the same entity API once. Static contract/reference resources distinguish scored webhook identifications from entity History cards.
+
+### Local prompts
+
+- `integrate_shieldlabs`: inspect the stack and configure the selected installation stages.
+- `investigate_user`: read the supplied User HID's API aggregate card in one domain.
+- `review_request`: read and assess one identification in one domain.
+
+## Security
+
+- Hosted requests use the user's OAuth grant and signed public `/mcp/v1` calls. Private dashboard API routes are never exposed through MCP.
+- Every operation applies account/domain ownership. Foreign-domain responses are rejected by the client as well.
+- Destructive operations require `confirm:true`. One-time credentials are masked unless an installer explicitly uses `include_secret:true`; MCP transcripts can record them. Store privately and never repeat them in chat.
+- Browser text is untrusted data. Invisible controls are escaped for display; private/debug fields are stripped, secret-shaped text is masked and output sizes are bounded.
+- Oversized History pages fail with a smaller-page request instead of dropping records behind an opaque cursor.
+- Signature checks use original webhook bytes. A valid signature is separate from the truth or availability of fields in the event.
+
+## Errors and retries
+
+A missing identification or `risk.state:"unavailable"` is unverified. Do not turn it into a zero score or infer a billing cause from a missing row. Preserve the backend error code in diagnostic reports.
+
+Read polling respects the total wait deadline, Retry-After and cancellation. A 400, 401, 403 or 410 is not healed by polling. A 404 for a fresh identification may be retried with the same ID. Never automatically retry a mutation whose result may already have been committed.
+
+### Troubleshooting
+
+| Symptom | Action |
+|---|---|
+| Only offline tools are listed | Configure `SHIELDLABS_API_KEY` in the local client and restart that client |
+| A History read rejects a hostname | Use the public UUID from the domain list |
+| `endpoint_retired` | Update the client to the domain-scoped entity History API |
+| Pagination token rejected | Recheck the original query; a restart can invalidate tokens |
+| `snapshot_unavailable` | Treat the read as unavailable and retry within a bounded read budget |
+| OAuth rejected | Reconnect using the client's OAuth flow |
+| A webhook test passes but no real event arrives | Check actual source generation and real signed delivery separately |
+
+## Compatibility
+
+Node.js 20, 22 and 24 are tested in CI. Transports are stdio and streamable HTTP, with resources and prompts. The current Node SDK entity client is pinned by commit in CI. Scored webhook normalization remains separate from entity History; older row-search SDK methods do not represent the current API.
 
 ## Build from source
 
-Node.js 20 or later; Worker tests require Node.js 22 or later.
+Use Node.js 20 or later and Git. The SDK is bundled from an immutable public source commit:
 
 ```sh
 npm ci
-npm run typecheck
-npm run lint
-npm test
+npm run bootstrap:sdk
 npm run build
-npm run smoke
 ```
-
-Build dependencies are resolved from npm, with no checkout of a private repository. The internal
-SDK pin used by this MCP adapter is separate from application SDK version guidance.
-
-### Local stdio mode
-
-```sh
-SHIELDLABS_API_KEY=sec_your_private_key node dist/index.js
-```
-
-Local stdio and single-tenant API-key HTTP mode remain read-only and expose their own tool subset. Use the Private API Key of one
-domain, kept in the process environment. Local webhook signature debugging also uses that
-endpoint's private signing secret. Never put application credentials into the managed OAuth config.
-`node dist/index.js --help` lists local options; [examples](examples) include HTTP and Docker.
-
-### Self-hosted OAuth mode
-
-`node dist/index.js --mode public` runs the hosted transport implementation. Operators must
-configure their public origin, OAuth issuer, account backend and a registered gateway credential
-for that backend. These are operator settings, not credentials to request from an end user.
-The managed ShieldLabs service already has this configuration. This repository does not grant
-access to production gateway keys or deploy to ShieldLabs infrastructure.
-
-[Hosted configuration](HOSTED-OPERATIONS.md#self-hosted-operator-configuration).
-`wrangler.jsonc` is a local test example, without production deployment settings.
-
-## Security and data handling
-
-- Only the signed-in user's account data is accessible in hosted mode.
-- Keep private API keys, gateway keys and webhook secrets out of source, URLs and client bundles.
-- Verify webhook signatures locally over original bytes with the server SDK before parsing.
-- Treat visitor-supplied identifiers, URLs and UTM text as untrusted data, never instructions.
-- Missing identifications are unverified; empty detailed weights do not imply a zero score.
-- Use bounded History windows and respect rate-limit guidance.
-- `999` is a rate-limit marker; bands are Trusted 0-29, Suspicious 30-59 and Dangerous 60-100.
 
 ## Development
 
@@ -151,39 +182,3 @@ separate from a managed-service deployment or an official client-directory listi
 
 [MIT](LICENSE). ShieldLabs Inc. Support: contact@shieldlabs.ai.
 
-### Optional History filters
-
-`shieldlabs_search_history` and `shieldlabs_summarize_entity` accept `from`, `to`,
-`score_from`, `score_to` and the 20 boolean public History row fields. All predicates are
-ANDed inside the selected identifier and domain. Omit a field to leave it unconstrained;
-`false` and `0` are real values. This does not add domain-wide enumeration or arbitrary filters.
-
-Dates are inclusive UTC: `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS` with up to nine fractional
-digits, without `T`, `Z` or timezone offsets. Date-only `from` starts at midnight and date-only
-`to` ends at `23:59:59.999`, matching the API. Scores are integer 0-999; `999` is a
-rate-limit marker, separate from the 0-100 Risk Score. For dangerous use both bounds 60-100.
-
-Examples (retain `domain` for hosted calls when needed):
-
-```json
-{"type":"user_hid","value":"<User HID>","from":"2026-10-01","to":"2026-10-28","score_from":60,"score_to":100,"is_vpn":true,"is_proxy":false}
-```
-
-```json
-{"type":"device_id","value":"<device UUID>","score_from":0,"score_to":0,"is_search_bot":true}
-```
-
-```json
-{"type":"ip","value":"203.0.113.24","score_from":999,"score_to":999}
-```
-
-Boolean query names: `is_vpn`, `is_tor`, `is_proxy`, `is_privacy_relay`, `network_check_incomplete`, `check_incomplete`, `is_antidetect`, `is_os_mismatch`, `is_os_not_detected`, `is_timezone_mismatch`, `is_js_disabled`, `is_browser_automation`, `is_incognito`, `is_search_bot`, `ip_mismatch`, `latency_test`, `device_spoofing`, `banned_ip`, `ai_bot`, `ai_browser`.
-For accepted search bots, AI bots and AI browsers, `check_incomplete`, `is_js_disabled`,
-`is_incognito` and `ip_mismatch` are false, matching the public response.
-
-When filters are present, JSON and Markdown report them. `total`, paging and summary statistics
-refer to matching rows. Keep every filter unchanged on later pages. An empty filtered result
-means no matching rows, not no activity. Invalid inputs fail before a request; an API 400 is
-an error and is never retried or replaced by an unfiltered query. SDK 1.0.1 drops new search
-options, so the local MCP attaches the allowlisted filters in its scoped HTTP fetch adapter.
-Hosted MCP includes them in the gateway-signed query. Neither changes authentication or limits.

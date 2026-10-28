@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
-  OperationsClient,
   MAX_BACKEND_BYTES,
   OperationError,
+  OperationsClient,
 } from '../src/public/operations-client.js';
 import { identification } from '../src/public/operations.js';
-import { SIGNING_SECRET, HOSTED_TOKEN, UPSTREAM, REQUEST_ID } from './operations-backend.js';
 import type { PortalFetch } from '../src/public/portal.js';
-import history from './fixtures/history-page.json';
+import card from './fixtures/review-portal-entity.json';
+import {
+  DOMAIN_ID,
+  HOSTED_TOKEN,
+  REQUEST_ID,
+  SIGNING_SECRET,
+  UPSTREAM,
+} from './operations-backend.js';
 
 function client(fetch: PortalFetch, signal?: AbortSignal) {
   return new OperationsClient({
@@ -27,6 +33,27 @@ function client(fetch: PortalFetch, signal?: AbortSignal) {
 
 export function operationsClientSuite() {
   describe('hosted request budgets and cancellation', () => {
+    for (const code of [
+      'snapshot_unavailable',
+      'coverage_unavailable',
+      'invalid_reader_scope',
+      'temporarily_unavailable',
+      'ambiguous_device_id',
+    ])
+      it(`preserves the controlled entity error code ${code} without leaking upstream text`, async () => {
+        const api = client(async () =>
+          Response.json({ error: { code, message: 'private-database-secret' } }, { status: 503 }),
+        );
+        await expect(
+          api.request('GET', '/mcp/v1/domains/' + DOMAIN_ID + '/history/identifications'),
+        ).rejects.toMatchObject({ code });
+        await expect(
+          api.request('GET', '/mcp/v1/domains/' + DOMAIN_ID + '/history/identifications'),
+        ).rejects.not.toMatchObject({
+          message: expect.stringContaining('private-database-secret'),
+        });
+      });
+
     it('immediately rethrows Retry-After 8 seconds when the total wait budget is 6 seconds', async () => {
       let calls = 0;
       const api = client(async () => {
@@ -38,7 +65,7 @@ export function operationsClientSuite() {
       });
       const started = performance.now();
       await expect(
-        identification(api, REQUEST_ID, undefined, true, new AbortController().signal, 6_000),
+        identification(api, REQUEST_ID, DOMAIN_ID, true, new AbortController().signal, 6_000),
       ).rejects.toMatchObject({
         code: 'rate_limited',
         retryAfterMs: 8_000,
@@ -62,16 +89,16 @@ export function operationsClientSuite() {
       const api = client(async () =>
         ++calls === 1
           ? new Response('<html>temporarily unavailable</html>', { status: 502 })
-          : Response.json({ data: history.data.slice(0, 1), total: history.total }),
+          : Response.json({ data: card }),
       );
       const found = await identification(
         api,
         REQUEST_ID,
-        undefined,
+        DOMAIN_ID,
         true,
         new AbortController().signal,
       );
-      expect(found.request_id).toBe(history.data[0]!.request_id);
+      expect(found.id).toBe(REQUEST_ID);
       expect(calls).toBe(2);
     });
     it('does not forward an already-cancelled call or a call to another contour', async () => {
@@ -107,9 +134,9 @@ export function operationsClientSuite() {
       expect(count).toBe(1);
       const waiting = new AbortController();
       const poll = identification(
-        client(async () => Response.json({ data: [], total: 0 })),
+        client(async () => Response.json({ error: { code: 'not_found' } }, { status: 404 })),
         REQUEST_ID,
-        undefined,
+        DOMAIN_ID,
         true,
         waiting.signal,
       );
@@ -125,7 +152,7 @@ export function operationsClientSuite() {
       });
       const started = performance.now();
       await expect(
-        identification(api, REQUEST_ID, undefined, true, new AbortController().signal, 50),
+        identification(api, REQUEST_ID, DOMAIN_ID, true, new AbortController().signal, 50),
       ).rejects.toMatchObject({ code: 'timeout' });
       expect(performance.now() - started).toBeLessThan(1000);
       expect(sentSignal?.aborted).toBe(true);

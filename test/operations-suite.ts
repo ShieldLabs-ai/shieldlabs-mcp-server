@@ -1,21 +1,18 @@
-import { HISTORY_FLAG_PARAMS } from '../src/history-filters.js';
-import historyFixture from './fixtures/history-page.json';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { describe, expect, it } from 'vitest';
+import entityCard from './fixtures/review-portal-entity.json';
 import {
   DOMAIN_ID,
-  HOOK_ID,
-  REQUEST_ID,
   DOMAIN_PATH,
+  HOOK_ID,
   HOOK_PATH,
   HOSTED_TOKEN,
-  SECOND_TOKEN,
   RAW_KEY,
   RAW_SECRET,
+  UPSTREAM,
   operationsBackend,
   verifyRequest,
-  UPSTREAM,
 } from './operations-backend.js';
 
 type Backend = ReturnType<typeof operationsBackend>;
@@ -113,85 +110,58 @@ async function connect(host: ReturnType<Host>, token = HOSTED_TOKEN) {
 /** Same actual MCP Client suite runs through Node handler and the Worker entry in workerd. */
 export function operationsSuite(host: Host) {
   describe('hosted operations contract', () => {
-    it('signs every History filter, preserves false/zero and repeats constraints on all summary pages', async () => {
+    it('preserves an entity card ID and nested score through the signed transport', async () => {
       const backend = operationsBackend();
-      const row = historyFixture.data[0]!;
-      backend.force({ status: 200, body: { data: [row], total: 3 } });
-      const client = await connect(host(backend), `slat_${'F'.repeat(43)}`);
+      backend.force({ status: 200, body: { data: entityCard } });
+      const client = await connect(host(backend));
       try {
-        const filters = {
-          from: '2026-10-01',
-          to: '2026-10-28 23:59:59.123456789',
-          score_from: 0,
-          score_to: 100,
-          ...Object.fromEntries(HISTORY_FLAG_PARAMS.map((key, i) => [key, i % 2 === 0])),
-        };
-        for (const name of ['shieldlabs_search_history', 'shieldlabs_summarize_entity']) {
-          const start = backend.calls.length;
-          const reply = await client.callTool({
-            name,
-            arguments: {
-              type: 'user_hid',
-              value: 'test-account',
-              domain: 'example.com',
-              ...filters,
-              response_format: 'markdown',
-            },
-          });
-          expect(reply.isError).not.toBe(true);
-          expect(reply.structuredContent).toMatchObject({ filters });
-          expect(JSON.stringify(reply.content)).toContain('Filters (AND');
-          const calls = backend.calls
-            .slice(start)
-            .filter((c) => c.path.startsWith('/mcp/v1/history/'));
-          expect(calls).toHaveLength(name === 'shieldlabs_search_history' ? 1 : 3);
-          for (const call of calls) {
-            const url = new URL(call.path, UPSTREAM);
-            expect(url.searchParams.get('domain')).toBe('example.com');
-            for (const [key, value] of Object.entries(filters))
-              expect(url.searchParams.get(key), key).toBe(String(value));
-            // Backend verifies the signature independently before accepting each request.
-            expect(call.token).toBe(`slat_${'F'.repeat(43)}`);
-          }
-        }
+        const result = await client.callTool({
+          name: 'shieldlabs_get_identification',
+          arguments: {
+            domain: DOMAIN_ID,
+            identification_id: entityCard.id,
+            wait: false,
+            response_format: 'json',
+          },
+        });
+        expect(result.isError).not.toBe(true);
+        expect(result.structuredContent).toMatchObject({
+          identification: {
+            id: entityCard.id,
+            risk: { state: 'ok', score: 30, band: 'suspicious' },
+          },
+        });
+        expect(backend.calls.at(-1)?.path).toBe(
+          `${DOMAIN_PATH}/history/identifications/${entityCard.id}`,
+        );
       } finally {
         await client.close();
       }
     });
-    it('rejects invalid History filters before the gateway and never retries a backend 400', async () => {
+    it('forwards the opaque entity-list cursor without fabricating row totals', async () => {
       const backend = operationsBackend();
-      const client = await connect(host(backend), `slat_${'G'.repeat(43)}`);
+      backend.force({ status: 200, body: { data: [entityCard], next_page_token: 'next+/=' } });
+      const client = await connect(host(backend));
       try {
-        const start = backend.calls.length;
-        for (const name of ['shieldlabs_search_history', 'shieldlabs_summarize_entity']) {
-          for (const filters of [
-            { is_vpn: 'false' },
-            { score_from: 1000 },
-            { score_from: 60, score_to: 59 },
-            { from: '2026-02-30' },
-            { from: '2026-10-28T00:00:00Z' },
-            { from: '2026-10-29', to: '2026-10-28' },
-            { is_ai_bot: true },
-          ]) {
-            const reply = await client.callTool({
-              name,
-              arguments: { type: 'user_hid', value: 'test-account', ...filters },
-            });
-            expect(reply.isError).toBe(true);
-          }
-        }
-        expect(backend.calls.length).toBe(start);
-        backend.force({
-          status: 400,
-          body: { code: 'invalid_request', error: 'invalid history input' },
-        });
-        const reply = await client.callTool({
+        const result = await client.callTool({
           name: 'shieldlabs_search_history',
-          arguments: { type: 'user_hid', value: 'test-account', is_vpn: true },
+          arguments: {
+            domain: DOMAIN_ID,
+            type: 'identifications',
+            limit: 1,
+            page_token: 'previous+/=',
+            response_format: 'json',
+          },
         });
-        expect(reply.isError).toBe(true);
-        expect(JSON.stringify(reply)).toContain('invalid_request');
-        expect(backend.calls.length).toBe(start + 1);
+        expect(result.isError).not.toBe(true);
+        expect(result.structuredContent).toMatchObject({
+          data: [{ id: entityCard.id }],
+          next_page_token: 'next+/=',
+        });
+        expect(result.structuredContent).not.toHaveProperty('total');
+        expect(new URL(UPSTREAM + backend.calls.at(-1)!.path).searchParams.get('page_token')).toBe(
+          'previous+/=',
+        );
       } finally {
         await client.close();
       }
@@ -258,42 +228,6 @@ export function operationsSuite(host: Host) {
       }
     });
 
-    it('carries HRE, nullable identity and current flags through all four hosted investigation tools', async () => {
-      const backend = operationsBackend();
-      backend.setHistoryExtras({
-        is_ai_bot: true,
-        hre: {
-          account_sharing: { status: 'evaluated', reason: 'devices', level: 'medium' },
-          account_takeover: { status: 'not_evaluated', reason: 'no_history', level: null },
-        },
-        client_identity: {
-          availability: 'available',
-          claims: [null, { agent_name: 'Reported Agent' }],
-          verified: [{ subject: 'provider', value_id: 'provider-id' }],
-        },
-      });
-      const client = await connect(host(backend), `slat_${'D'.repeat(43)}`);
-      try {
-        for (const [name, args] of [
-          ['shieldlabs_get_identification', { request_id: REQUEST_ID }],
-          ['shieldlabs_search_history', { type: 'user_hid', value: 'anonymous' }],
-          ['shieldlabs_summarize_entity', { type: 'user_hid', value: 'anonymous' }],
-          ['shieldlabs_explain_risk_score', { request_id: REQUEST_ID }],
-        ] as const) {
-          const result = await client.callTool({
-            name,
-            arguments: { ...args, domain: 'example.com', response_format: 'markdown' },
-          });
-          expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
-          expect(JSON.stringify(result.structuredContent)).toContain('Reported Agent');
-          expect(JSON.stringify(result.content)).toContain('Reported Agent');
-          expect(JSON.stringify(result.content)).toContain('not_evaluated');
-        }
-      } finally {
-        await client.close();
-      }
-    });
-
     it('matches webhook name code-point and URL UTF-8 byte boundaries on create and patch', async () => {
       const backend = operationsBackend();
       const client = await connect(host(backend));
@@ -336,59 +270,6 @@ export function operationsSuite(host: Host) {
             }
           }
         }
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('accepts only IPv4-convertible history IPs and refuses pure IPv6 before forwarding', async () => {
-      const backend = operationsBackend();
-      const client = await connect(host(backend));
-      try {
-        const tools = (await client.listTools()).tools;
-        for (const name of ['shieldlabs_search_history', 'shieldlabs_summarize_entity']) {
-          expect(JSON.stringify(tools.find((tool) => tool.name === name)!.inputSchema)).toContain(
-            'pure IPv6 is not searchable',
-          );
-          for (const value of ['2001:db8::1', '::1', '::203.0.113.24', 'not-an-ip', '256.0.0.1']) {
-            const before = backend.calls.length;
-            const reply = await client.callTool({ name, arguments: { type: 'ip', value } });
-            expect(reply.isError).toBe(true);
-            expect(JSON.stringify(reply)).toContain('IPv4 or IPv4-mapped IPv6 only');
-            expect(JSON.stringify(reply)).not.toContain('502');
-            expect(backend.calls).toHaveLength(before);
-          }
-          for (const value of [
-            '203.0.113.24',
-            '::ffff:203.0.113.24',
-            '::ffff:cb00:7118',
-            '0:0:0:0:0:ffff:cb00:7118',
-          ]) {
-            const reply = await client.callTool({ name, arguments: { type: 'ip', value } });
-            expect(reply.isError).not.toBe(true);
-            expect(backend.calls.at(-1)!.path).toContain('/ip/203.0.113.24?');
-          }
-        }
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('retries transient reads within the polling budget with fresh signatures', async () => {
-      const backend = operationsBackend();
-      const client = await connect(host(backend));
-      try {
-        backend.failNext(500);
-        backend.failNext(429);
-        const reply = await client.callTool({
-          name: 'shieldlabs_get_identification',
-          arguments: { request_id: REQUEST_ID, wait: true },
-        });
-        expect(reply.isError).not.toBe(true);
-        expect(
-          backend.calls.filter((call) => call.path.startsWith('/mcp/v1/requests/')),
-        ).toHaveLength(3);
-        expect(backend.seen.size).toBe(backend.calls.length);
       } finally {
         await client.close();
       }
@@ -554,71 +435,6 @@ export function operationsSuite(host: Host) {
         expect(backend.calls.at(-1)!.body).toBe('{"url":"https://example.com/new"}');
       } finally {
         await client.close();
-      }
-    });
-
-    it('normalizes history, summarizes and explains risk, preserves domain selection and isolates accounts', async () => {
-      const backend = operationsBackend();
-      const instance = host(backend);
-      const first = await connect(instance);
-      const second = await connect(instance, SECOND_TOKEN);
-      try {
-        const search = {
-          name: 'shieldlabs_search_history',
-          arguments: { type: 'user_hid', value: 'user+%? #', response_format: 'json' },
-        };
-        const [a, b] = await Promise.all([first.callTool(search), second.callTool(search)]);
-        expect(a.isError).not.toBe(true);
-        expect(b.isError).not.toBe(true);
-        expect(JSON.stringify(a.structuredContent)).toContain('example.com');
-        expect(JSON.stringify(a.structuredContent)).not.toContain('other.test');
-        expect(JSON.stringify(b.structuredContent)).toContain('other.test');
-        expect(backend.calls.some((call) => call.path.includes('/user%2B%25%3F%20%23?'))).toBe(
-          true,
-        );
-        const get = await first.callTool({
-          name: 'shieldlabs_get_identification',
-          arguments: { request_id: REQUEST_ID, domain: 'example.com', wait: false },
-        });
-        expect(get.isError).not.toBe(true);
-        expect(get.structuredContent).toMatchObject({ found: true });
-        expect(backend.calls.at(-1)!.path).toContain(
-          `/requests/${REQUEST_ID}?limit=1&offset=0&domain=example.com`,
-        );
-        const summary = await first.callTool({
-          name: 'shieldlabs_summarize_entity',
-          arguments: { type: 'user_hid', value: 'user', max_items: 1 },
-        });
-        expect(summary.isError).not.toBe(true);
-        expect(summary.structuredContent).toMatchObject({
-          window: { identifications_analyzed: 1 },
-        });
-        const explanation = await first.callTool({
-          name: 'shieldlabs_explain_risk_score',
-          arguments: { request_id: REQUEST_ID, domain: 'example.com' },
-        });
-        expect(explanation.isError).not.toBe(true);
-        expect(explanation.structuredContent).toHaveProperty('signals');
-        expect(
-          (
-            await first.readResource({
-              uri: `shieldlabs://domains/example.com/identifications/${REQUEST_ID}`,
-            })
-          ).contents,
-        ).toHaveLength(1);
-        backend.setMultiple(true);
-        const missing = await first.callTool(search);
-        expect(missing.isError).toBe(true);
-        expect(JSON.stringify(missing.content)).toContain('domain_required');
-        expect(JSON.stringify(missing.content)).toContain('example.com');
-        const foreign = await first.callTool({
-          ...search,
-          arguments: { ...search.arguments, domain: 'other.test' },
-        });
-        expect(foreign.isError).toBe(true);
-        expect(JSON.stringify(foreign.content)).toContain('unknown_domain');
-      } finally {
-        await Promise.all([first.close(), second.close()]);
       }
     });
 

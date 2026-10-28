@@ -29,7 +29,7 @@ export const PROFILE_CACHE_MS = 60_000;
  * release this server version was tested with: later commits to the skills repository never
  * reach installed servers.
  */
-export const SETUP_SKILL_REF = 'refs/tags/v1.1.0';
+export const SETUP_SKILL_REF = 'refs/tags/v1.2.0';
 export const SETUP_SKILL_URL = `https://raw.githubusercontent.com/ShieldLabs-ai/skills/${SETUP_SKILL_REF}/skills/shieldlabs-setup/SKILL.md`;
 export const SETUP_SKILL_TIMEOUT_MS = 3_000;
 export const SETUP_SKILL_CACHE_MS = 60 * 60 * 1000;
@@ -71,19 +71,14 @@ export const HISTORY_TOOL_NAMES: readonly ToolName[] = [
   TOOL_NAMES.summarizeEntity,
 ];
 
-/** Identifier types the History API can search by. */
-export const LOOKUP_TYPES = [
-  'request_id',
-  'user_hid',
-  'device_id',
-  'visitor_id',
-  'ip',
-  'session_id',
-  'cookie_id',
-] as const;
+/** History resources. Session and cookie are identification fields, not resources. */
+export const HISTORY_RESOURCES = ['identifications', 'user', 'visitor', 'device', 'ip'] as const;
 
-/** Identifier types that shieldlabs_summarize_entity aggregates. */
-export const ENTITY_TYPES = ['user_hid', 'device_id', 'visitor_id', 'ip', 'cookie_id'] as const;
+/** Lists in the first delivery. visitor, device and ip have a card, not a list. */
+export const HISTORY_LIST_RESOURCES = ['identifications', 'user'] as const;
+
+/** Resources shieldlabs_summarize_entity aggregates. identifications is a list, not an aggregate. */
+export const ENTITY_TYPES = ['user', 'visitor', 'device', 'ip'] as const;
 
 /** User HID values that do not name an account: anonymous checks and agent sentinels. */
 export const NON_ACCOUNT_USER_HIDS: ReadonlySet<string> = new Set([

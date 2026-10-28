@@ -3,6 +3,7 @@
 // the way an MCP client does, then lists and calls tools, resources and prompts.
 //
 //   npm run build && node scripts/smoke-stdio.mjs
+import { MOCK_DOMAIN_ID } from './entity-mock.mjs';
 import { strict as assert } from 'node:assert';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -66,43 +67,57 @@ try {
   const page = json(
     await client.callTool({
       name: 'shieldlabs_search_history',
-      arguments: { type: 'ip', value: '203.0.113.200', limit: 5, response_format: 'json' },
+      arguments: {
+        type: 'identifications',
+        domain: MOCK_DOMAIN_ID,
+        limit: 5,
+        response_format: 'json',
+      },
     }),
   );
-  assert.equal(page.total, 5);
-  console.log(`shieldlabs_search_history ip 203.0.113.200: total ${page.total}`);
+  assert.equal(page.data.length, 5);
+  console.log(`shieldlabs_search_history: ${page.data.length} records`);
 
-  const first = page.identifications[0];
+  const first = page.data[0];
   const found = json(
     await client.callTool({
       name: 'shieldlabs_get_identification',
-      arguments: { request_id: first.request_id, response_format: 'json' },
+      arguments: { identification_id: first.id, domain: MOCK_DOMAIN_ID, response_format: 'json' },
     }),
   );
-  assert.equal(found.identification.request_id, first.request_id);
+  assert.equal(found.identification.id, first.id);
   console.log(
-    `shieldlabs_get_identification: Risk Score ${found.identification.risk_score} (${found.identification.risk_band})`,
+    `shieldlabs_get_identification: Risk Score ${found.identification.risk.score} (${found.identification.risk.band})`,
   );
 
   const summary = json(
     await client.callTool({
       name: 'shieldlabs_summarize_entity',
-      arguments: { type: 'ip', value: '203.0.113.200', response_format: 'json' },
+      arguments: {
+        type: 'ip',
+        value: '203.0.113.200',
+        domain: MOCK_DOMAIN_ID,
+        response_format: 'json',
+      },
     }),
   );
-  assert.equal(summary.summary.risk.rate_limit_markers, 3);
+  assert.equal(summary.entity.identifications, 5);
   console.log(
-    `shieldlabs_summarize_entity: ${summary.summary.risk.rate_limit_markers} rate-limit markers`,
+    `shieldlabs_summarize_entity: ${summary.entity.identifications} identifications reported`,
   );
 
   const explanation = json(
     await client.callTool({
       name: 'shieldlabs_explain_risk_score',
-      arguments: { request_id: page.identifications.at(-1).request_id, response_format: 'json' },
+      arguments: {
+        identification_id: page.data.at(-1).id,
+        domain: MOCK_DOMAIN_ID,
+        response_format: 'json',
+      },
     }),
   );
   console.log(
-    `shieldlabs_explain_risk_score: ${explanation.risk_band}, ${explanation.signals.length} signals`,
+    `shieldlabs_explain_risk_score: ${explanation.risk.state}, ${explanation.signals.items.length} signals`,
   );
 
   const profile = json(

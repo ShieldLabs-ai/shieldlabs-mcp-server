@@ -1,10 +1,9 @@
-import { SERVER_VERSION } from '../src/constants.js';
-import { request as httpRequest } from 'node:http';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { request as httpRequest } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildServerConfig } from '../src/config.js';
-import { TOOL_NAMES } from '../src/constants.js';
+import { SERVER_VERSION, TOOL_NAMES } from '../src/constants.js';
 import { createContext } from '../src/context.js';
 import {
   generateToken,
@@ -177,9 +176,14 @@ describe('streamable HTTP transport', () => {
     expect(tools).toHaveLength(7);
     const result = (await client.callTool({
       name: TOOL_NAMES.searchHistory,
-      arguments: { type: 'ip', value: '203.0.113.200', limit: 1, response_format: 'json' },
+      arguments: {
+        type: 'user',
+        domain: '11111111-1111-4111-8111-111111111111',
+        limit: 1,
+        response_format: 'json',
+      },
     })) as any;
-    expect(JSON.parse(result.content[0].text).total).toBe(5);
+    expect(JSON.parse(result.content[0].text).data).toHaveLength(1);
     await client.close();
   });
 });

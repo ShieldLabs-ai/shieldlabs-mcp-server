@@ -5,6 +5,13 @@ import { connectionTypeInfo } from './catalog/connection-types.js';
 import { DETECTION_FLAG_KEYS, detectionFlagInfo } from './catalog/detection-flags.js';
 import { riskSignalInfo, UNKNOWN_SIGNAL_MEANING } from './catalog/risk-signals.js';
 import { CHARACTER_LIMIT } from './constants.js';
+import {
+  currentFlags,
+  currentMetadata,
+  CurrentMetadataShape,
+  identificationFlags,
+  type CurrentMetadata,
+} from './current-contract.js';
 import { ToolInputError } from './errors.js';
 import {
   code,
@@ -15,18 +22,11 @@ import {
 } from './format.js';
 import { RiskBandSchema } from './identification.js';
 import { nullableString } from './schema.js';
-import {
-  CurrentMetadataShape,
-  currentFlags,
-  currentMetadata,
-  identificationFlags,
-  type CurrentMetadata,
-} from './current-contract.js';
 
 /** At most this many signals are explained; longer lists only come from unusual input. */
 const MAX_SIGNALS = 60;
 
-/** A pasted request ID or connection type longer than this is cut (real values are short). */
+/** A pasted identification ID or connection type longer than this is cut (real values are short). */
 const MAX_PASTED_VALUE_LENGTH = 100;
 
 /** The rate-limit marker: the only valid value above 100. */
@@ -69,7 +69,7 @@ function checkWeight(weight: number, where: string): number {
 
 /** The part of an identification that an explanation needs. */
 export interface ExplainInput {
-  request_id: string | null;
+  identification_id: string | null;
   device_id: string | null;
   risk_score: number;
   signals: { name: string; weight: number }[];
@@ -80,10 +80,19 @@ export interface ExplainInput {
 }
 
 export function fromIdentification(identification: Identification): ExplainInput {
+  const card = entityRisk(identification.raw);
+  if (card !== null && card.score === null) {
+    throw new ToolInputError(
+      'This identification has no Risk Score. risk.state is unavailable, which is not a score of 0.',
+    );
+  }
   return {
-    request_id: identification.request_id || optionalString(identification.raw.identification_id),
+    identification_id:
+      optionalString(identification.raw.identification_id) ||
+      (card !== null ? card.id : '') ||
+      identification.identification_id,
     device_id: identification.device_id,
-    risk_score: identification.risk_score,
+    risk_score: card?.score ?? identification.risk_score,
     signals: identification.signals.map((s) => ({ name: s.name, weight: s.weight })),
     flags: identificationFlags(identification),
     metadata: currentMetadata(identification.raw, { truncated: [], escaped: [] }),
@@ -98,15 +107,25 @@ const HISTORY_PLACEHOLDER_KEY = 'sec_00000000-00000000-00000000';
  * Normalizes one raw History API row with the SDK's own History normalizer (signal slugs from
  * score_details, flags from the is_* columns), by serving the row from memory: no network access.
  */
+/** Entity History card: `id` plus `risk`, not the old snapshot columns `request_id` and `score`. */
+function entityRisk(row: JsonObject): { id: string; score: number | null } | null {
+  if (!isObject(row.risk) || row.type !== 'identification') return null;
+  const id = typeof row.id === 'string' ? row.id : '';
+  if (row.risk.state === 'unavailable' || typeof row.risk.score !== 'number')
+    return { id, score: null };
+  return { id, score: row.risk.score };
+}
+
 export async function normalizeHistoryRow(row: JsonObject): Promise<Identification> {
   // History has used both names for the same identifier. Adapt the wire row before the
   // pinned SDK normalizes it; never infer an ID from the search argument.
+  const card = entityRisk(row);
   const requestId =
-    typeof row.request_id === 'string' && row.request_id !== ''
-      ? row.request_id
-      : typeof row.identification_id === 'string'
-        ? row.identification_id
-        : '';
+    optionalString(row.identification_id) || optionalString(row.request_id) || card?.id || '';
+  const wire: JsonObject = { ...row, identification_id: requestId };
+  // The pinned SDK reads a top-level score. Copy a known entity score across.
+  // An unavailable risk has no score; leaving it absent is handled after normalization.
+  if (card !== null && card.score !== null) wire.score = card.score;
   const offline = new ShieldLabs({
     apiKey: HISTORY_PLACEHOLDER_KEY,
     baseUrl: 'http://127.0.0.1',
@@ -116,12 +135,11 @@ export async function normalizeHistoryRow(row: JsonObject): Promise<Identificati
         status: 200,
         ok: true,
         headers: { get: () => null },
-        text: () =>
-          Promise.resolve(JSON.stringify({ data: [{ ...row, request_id: requestId }], total: 1 })),
+        text: () => Promise.resolve(JSON.stringify({ data: [wire], total: 1 })),
       }),
   });
   const page = await offline.history.search('request_id', NIL_UUID, { limit: 1 });
-  return { ...(page.data[0] as Identification), request_id: requestId };
+  return { ...(page.data[0] as Identification), identification_id: requestId };
 }
 
 function optionalString(value: unknown): string | null {
@@ -152,7 +170,7 @@ function fromNormalizedObject(obj: JsonObject, source: ExplainInput['source']): 
     DETECTION_FLAG_KEYS.map((flag) => [flag, rawFlags[flag] === true]),
   );
   return {
-    request_id: optionalString(obj.request_id) ?? optionalString(obj.identification_id),
+    identification_id: optionalString(obj.identification_id),
     device_id: optionalString(obj.device_id),
     risk_score: score,
     signals,
@@ -194,7 +212,7 @@ export async function parseIdentificationInput(input: unknown): Promise<ExplainI
     source = 'webhook';
   } else if (Array.isArray(obj.data)) {
     throw new ToolInputError(
-      'This looks like a History API page. Pass one identification (one item of data), or use request_id.',
+      'This looks like a History API page. Pass one identification (one item of data), or use identification_id.',
     );
   } else if (isObject(obj.identification)) {
     // Output of shieldlabs_get_identification with response_format=json.
@@ -206,7 +224,7 @@ export async function parseIdentificationInput(input: unknown): Promise<ExplainI
     // Every History row carries its score; a missing score is unknown, not a Risk Score of 0.
     if (!('score' in obj)) {
       throw new ToolInputError(
-        'This History API row has score_details but no score. Paste the whole row, including score, or use request_id.',
+        'This History API row has score_details but no score. Paste the whole row, including score, or use identification_id.',
       );
     }
     checkRiskScore(obj.score, 'score');
@@ -215,12 +233,14 @@ export async function parseIdentificationInput(input: unknown): Promise<ExplainI
     return input;
   }
   throw new ToolInputError(
-    'identification has no risk_score (normalized identification or webhook data) and no score (History API row). Pass one of those shapes, or use request_id.',
+    'identification has no risk_score (normalized identification or webhook data) and no score (History API row). Pass one of those shapes, or use identification_id.',
   );
 }
 
 export const ExplanationSchema = z.object({
-  request_id: nullableString('Request ID of the explained identification, when known'),
+  identification_id: nullableString(
+    'Identification ID of the explained identification, when known.',
+  ),
   risk_score: z.number().int(),
   risk_band: RiskBandSchema,
   ...CurrentMetadataShape,
@@ -297,8 +317,10 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
       in_catalog: info !== undefined,
     };
   });
-  const requestId =
-    input.request_id === null ? null : bound(input.request_id, MAX_PASTED_VALUE_LENGTH);
+  const identificationId =
+    input.identification_id === null
+      ? null
+      : bound(input.identification_id, MAX_PASTED_VALUE_LENGTH);
   const connectionValue =
     input.connection_type === null ? null : bound(input.connection_type, MAX_PASTED_VALUE_LENGTH);
   const flags = DETECTION_FLAG_KEYS.filter((flag) => input.flags[flag] === true).map((flag) => {
@@ -349,15 +371,15 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
       `${longNames} risk signal ${longNames === 1 ? 'name was' : 'names were'} cut to ${MAX_SIGNAL_NAME_LENGTH} characters.`,
     );
   }
-  if (requestId?.cut === true) {
-    shortened.push(`request_id was cut to ${MAX_PASTED_VALUE_LENGTH} characters.`);
+  if (identificationId?.cut === true) {
+    shortened.push(`identification_id was cut to ${MAX_PASTED_VALUE_LENGTH} characters.`);
   }
   if (connectionValue?.cut === true) {
     shortened.push(`connection_type was cut to ${MAX_PASTED_VALUE_LENGTH} characters.`);
   }
   if (escapedValues) {
     notes.push(
-      'Invisible or control characters in the request ID, the connection type or risk signal names are shown as \\u escapes.',
+      'Invisible or control characters in the identification ID, the connection type or risk signal names are shown as \\u escapes.',
     );
   }
   notes.push(
@@ -371,7 +393,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
       : connectionTypeInfo(connectionValue.text);
 
   return {
-    request_id: requestId === null ? null : requestId.text,
+    identification_id: identificationId === null ? null : identificationId.text,
     risk_score: score,
     risk_band: band,
     band_range: bandRange(band),
@@ -415,8 +437,8 @@ export function explanationMarkdown(explanation: Explanation): string {
       ? `# Rate-limit marker ${explanation.risk_score} (not a Risk Score)`
       : `# Risk Score ${explanation.risk_score}: ${explanation.risk_band} (${explanation.band_range})`;
   const lines = [heading, ''];
-  if (explanation.request_id !== null)
-    lines.push(`Request ID: ${code(explanation.request_id)}`, '');
+  if (explanation.identification_id !== null)
+    lines.push(`Identification ID: ${code(explanation.identification_id)}`, '');
   lines.push(explanation.band_meaning, '');
   if (explanation.truncation_message !== undefined) {
     lines.push(`Note: ${explanation.truncation_message}`, '');

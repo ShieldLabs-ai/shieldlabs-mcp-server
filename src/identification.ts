@@ -1,18 +1,15 @@
-import { NIL_UUID, type Identification } from '@shieldlabs-ai/node';
+import { type Identification } from '@shieldlabs-ai/node';
 import { z } from 'zod';
 import { bandOf } from './catalog/bands.js';
 import { CURRENT_DETECTION_FLAG_KEYS } from './catalog/detection-flags.js';
+import { currentMetadata, CurrentMetadataShape, identificationFlags } from './current-contract.js';
 import {
-  code,
   cutSerialized,
   escapeInvisible,
-  formatTimestamp,
   MAX_SIGNAL_NAME_LENGTH,
   MAX_VALUE_LENGTH,
-  signedWeight,
 } from './format.js';
 import { nullableString } from './schema.js';
-import { CurrentMetadataShape, currentMetadata, identificationFlags } from './current-contract.js';
 
 const IpInfoSchema = z.object({
   ip: z.string().describe('Dotted IPv4 address, or "" when none is known'),
@@ -39,7 +36,7 @@ export const MAX_SIGNALS_PER_IDENTIFICATION = 50;
  * `risk_band` added and `signals[].description` always null.
  */
 export const IdentificationOutputSchema = z.object({
-  request_id: z.string(),
+  identification_id: z.string(),
   visitor_id: z.string(),
   device_id: z.string(),
   session_id: z.string(),
@@ -65,8 +62,14 @@ export const IdentificationOutputSchema = z.object({
     utm_content: z.string(),
     utm_term: z.string(),
   }),
-  risk_score: z.number().int(),
-  risk_band: RiskBandSchema,
+  risk_score: z
+    .number()
+    .int()
+    .nullable()
+    .describe('Null when the History card says the risk is unavailable. That is not a score of 0.'),
+  risk_band: RiskBandSchema.nullable().describe(
+    'Null when risk_score is null. 0 is the trusted band, not an unknown score.',
+  ),
   signals: z.array(
     z.object({
       name: z.string(),
@@ -131,29 +134,40 @@ function boundStrings<T extends object>(obj: T, prefix: string, max: number, cha
  * hide text from the person reading it.
  */
 export function toIdentificationOutput(identification: Identification): IdentificationOutput {
-  const { raw: _raw, ...rest } = identification;
+  const { raw, identification_id: sdkRequestId, ...rest } = identification;
   const changes: Changes = { truncated: [], escaped: [] };
-  // History rows and webhooks always carry an integer; anything else would come from a malformed payload.
-  const score = Number.isFinite(rest.risk_score) ? Math.trunc(rest.risk_score) : 0;
+  const rawRisk =
+    raw !== null && typeof raw === 'object' && 'risk' in raw && isRiskRecord(raw.risk)
+      ? raw.risk
+      : null;
+  const scoreUnknown =
+    rawRisk !== null &&
+    (rawRisk.state === 'unavailable' || typeof rawRisk.score !== 'number') &&
+    raw.type === 'identification';
+  // A known integer stays. An entity card with unavailable risk stays null, not 0.
+  const score = scoreUnknown
+    ? null
+    : Number.isFinite(rest.risk_score)
+      ? Math.trunc(rest.risk_score)
+      : 0;
   const signals = rest.signals.slice(0, MAX_SIGNALS_PER_IDENTIFICATION);
   const output: IdentificationOutput = {
     ...boundStrings(rest, '', MAX_VALUE_LENGTH, changes),
     public_ip: boundStrings(rest.public_ip, 'public_ip.', MAX_VALUE_LENGTH, changes),
     local_ip: boundStrings(rest.local_ip, 'local_ip.', MAX_VALUE_LENGTH, changes),
     traffic_source: boundStrings(rest.traffic_source, 'traffic_source.', MAX_VALUE_LENGTH, changes),
-    request_id: boundValue(
-      identification.request_id ||
-        (typeof identification.raw.identification_id === 'string'
-          ? identification.raw.identification_id
-          : ''),
-      'request_id',
+    identification_id: boundValue(
+      (typeof raw.identification_id === 'string' ? raw.identification_id : '') ||
+        (raw.type === 'identification' && typeof raw.id === 'string' ? raw.id : '') ||
+        sdkRequestId,
+      'identification_id',
       MAX_VALUE_LENGTH,
       changes,
     ),
     detection_flags: identificationFlags(identification),
     ...currentMetadata(identification.raw, changes),
     risk_score: score,
-    risk_band: bandOf(score),
+    risk_band: score === null ? null : bandOf(score),
     // History rows carry internal score-detail text in `description`; it is not meant to be
     // shown to users, so this server returns the slug and weight only (as webhooks do).
     signals: signals.map((signal, index) => ({
@@ -179,97 +193,6 @@ export function toIdentificationOutput(identification: Identification): Identifi
   return output;
 }
 
-export function scoreLabel(score: number): string {
-  if (score > 100) return `rate-limit marker ${score} (not a Risk Score)`;
-  return `Risk Score ${score} (${bandOf(score)})`;
-}
-
-function userHidText(userHid: string | null): string {
-  if (userHid === null) return 'none';
-  if (userHid === 'anonymous') return `${code(userHid)} (anonymous check)`;
-  return code(userHid);
-}
-
-function deviceIdText(deviceId: string): string {
-  return deviceId === NIL_UUID ? `${code(deviceId)} (no usable device signals)` : code(deviceId);
-}
-
-function ipText(ip: { ip: string; country: string }): string {
-  if (ip.ip === '') return 'none';
-  return ip.country === '' ? code(ip.ip) : `${code(ip.ip)} (${code(ip.country)})`;
-}
-
-/** Markdown lines for one identification. Every API value is rendered as inert code. */
-export function identificationMarkdown(item: IdentificationOutput, heading: string): string[] {
-  const lines = [
-    `${heading} ${scoreLabel(item.risk_score)}, observed ${formatTimestamp(item.observed_at)}`,
-  ];
-  lines.push(`- Request ID: ${code(item.request_id)}`);
-  lines.push(`- User HID: ${userHidText(item.user_hid)}`);
-  lines.push(
-    `- Device ID: ${deviceIdText(item.device_id)}; visitor ID: ${code(item.visitor_id)}; cookie ID: ${code(item.cookie_id)}; session ID: ${code(item.session_id)}`,
-  );
-  lines.push(`- Domain: ${code(item.domain)}`);
-  lines.push(`- Public IP: ${ipText(item.public_ip)}; local IP: ${ipText(item.local_ip)}`);
-  lines.push(
-    `- Connection type: ${code(item.connection_type)}; OS: ${code(item.os)}; browser: ${code(item.browser)}; device type: ${code(item.device_type)}`,
-  );
-  lines.push(
-    `- Risk signals: ${
-      item.signals.length === 0
-        ? 'none'
-        : item.signals.map((s) => `${code(s.name)} ${signedWeight(s.weight)}`).join(', ')
-    }`,
-  );
-  const flags = CURRENT_DETECTION_FLAG_KEYS.filter((flag) => item.detection_flags[flag]);
-  lines.push(
-    `- Detection flags: ${flags.length === 0 ? 'none' : flags.map((f) => code(f)).join(', ')}`,
-  );
-
-  const unknownFlags = CURRENT_DETECTION_FLAG_KEYS.filter(
-    (key) => item.detection_flags[key] === null,
-  );
-  if (unknownFlags.length)
-    lines.push(
-      `- Signals unavailable in this response: ${unknownFlags.map((key) => code(key)).join(', ')}`,
-    );
-  if (item.hre !== undefined)
-    lines.push(
-      `- High-Risk Events (separate from this scan's Risk Score): ${code(JSON.stringify(item.hre), { maxLength: 3_000 })}`,
-    );
-  if (item.client_identity !== undefined)
-    lines.push(
-      `- Client identity (claims are not verified; proof covers only the named attributes): ${code(JSON.stringify(item.client_identity), { maxLength: 6_000 })}`,
-    );
-  for (const key of ['search_bot_owner', 'ai_bot_owner', 'ai_browser_owner'] as const) {
-    if (item[key] !== undefined)
-      lines.push(
-        `- ${key}: ${code(JSON.stringify(item[key]))} (reported label, not a verified identity)`,
-      );
-  }
-  if (item.contract_warnings)
-    for (const warning of item.contract_warnings) lines.push(`- ${warning}`);
-  const source = item.traffic_source;
-  const traffic: string[] = [];
-  if (source.channel !== '') traffic.push(`channel ${code(source.channel)}`);
-  if (source.referrer_domain !== '') traffic.push(`referrer ${code(source.referrer_domain)}`);
-  if (source.landing_url !== '')
-    traffic.push(`landing URL ${code(source.landing_url, { maxLength: 300 })}`);
-  if (source.click_id_type !== '') traffic.push(`click ID type ${code(source.click_id_type)}`);
-  const utm = (['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const)
-    .filter((key) => source[key] !== '')
-    .map((key) => `${key} ${code(source[key])}`);
-  traffic.push(...utm);
-  if (traffic.length > 0) lines.push(`- Traffic source: ${traffic.join('; ')}`);
-  if (item.truncated_fields !== undefined) {
-    lines.push(
-      `- Shortened by this server (values longer than ${MAX_VALUE_LENGTH.toLocaleString('en-US')} characters, risk signals or bounded metadata arrays): ${item.truncated_fields.join(', ')}`,
-    );
-  }
-  if (item.escaped_fields !== undefined) {
-    lines.push(
-      `- Invisible or control characters shown as \\u escapes by this server: ${item.escaped_fields.join(', ')}`,
-    );
-  }
-  return lines;
+function isRiskRecord(value: unknown): value is { state?: unknown; score?: unknown } {
+  return value !== null && typeof value === 'object';
 }

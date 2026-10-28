@@ -1,5 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { ShieldLabs } from '@shieldlabs-ai/node';
+import type { LookupType, ShieldLabs } from '@shieldlabs-ai/node';
 import { z } from 'zod';
 import { UUID_PATTERN } from '../constants.js';
 import { redact, type ServerContext } from '../context.js';
@@ -13,12 +13,45 @@ export const ResponseFormatSchema = z
 
 export type ResponseFormat = z.infer<typeof ResponseFormatSchema>;
 
-export const RequestIdSchema = z
+export const IdentificationIdSchema = z
   .string()
-  .regex(UUID_PATTERN, 'request_id must be a UUID such as 02f1d973-84db-4156-a7f7-e799e6bf389b')
+  .regex(
+    UUID_PATTERN,
+    'identification_id must be a UUID such as 02f1d973-84db-4156-a7f7-e799e6bf389b',
+  )
   .describe(
-    'Request ID of one identification: the UUID the browser agent returned for the protected action, for example "02f1d973-84db-4156-a7f7-e799e6bf389b"',
+    'Identification ID of one identification: the UUID the browser agent returned for the protected action.',
   );
+
+const LIVE_HTTP_TYPE: Record<string, string> = {
+  identifications: 'identification_id',
+  user: 'user_hid',
+  visitor: 'visitor_id',
+  device: 'device_id',
+  ip: 'ip',
+};
+
+/** Resource key translated to the current History HTTP search type. */
+export function historyHttpSearchType(resource: string): string {
+  const live = LIVE_HTTP_TYPE[resource];
+  if (live === undefined) {
+    throw new ToolInputError(
+      'History resources are identifications, user, visitor, device and ip. Session and cookie are not resources.',
+    );
+  }
+  return live;
+}
+
+/** Resource key the caller used, translated to the pinned History client's lookup name. */
+export function historySdkLookup(resource: string): LookupType {
+  const live = historyHttpSearchType(resource);
+  return (live === 'identification_id' ? 'request_id' : live) as LookupType;
+}
+
+/** user and ip keep their spelling. UUID resources are lowercased by the History client. */
+export function preservesLookupCase(resource: string): boolean {
+  return resource === 'user' || resource === 'ip';
+}
 
 /** Tool annotations shared by every tool: all are read-only and repeatable. */
 export function readOnlyAnnotations(title: string, openWorld: boolean) {

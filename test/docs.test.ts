@@ -1,7 +1,7 @@
+import { SIGNALS } from '@shieldlabs-ai/node';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SIGNALS } from '@shieldlabs-ai/node';
 import { describe, expect, it } from 'vitest';
 import { DETECTION_FLAG_KEYS } from '../src/catalog/detection-flags.js';
 import { RISK_SIGNAL_CATALOG } from '../src/catalog/risk-signals.js';
@@ -65,15 +65,12 @@ describe('package metadata', () => {
     );
   });
 
-  it('describes the npm package and managed OAuth remote in server.json', () => {
+  it('describes the npm package and the image in server.json', () => {
     expect(server.name).toBe(pkg.mcpName);
     expect(server.version).toBe(SERVER_VERSION);
     expect(server.description.length).toBeLessThanOrEqual(100);
     expect(server.packages.map((p: any) => [p.registryType, p.identifier])).toEqual([
       ['npm', '@shieldlabs-ai/mcp'],
-    ]);
-    expect(server.remotes).toEqual([
-      { type: 'streamable-http', url: 'https://mcp.shieldlabs.ai/mcp' },
     ]);
     expect(server.packages[0].version).toBe(SERVER_VERSION);
     const documented = [
@@ -104,17 +101,31 @@ describe('package metadata', () => {
     expect(read('CHANGELOG.md')).toContain(`## [${SERVER_VERSION}] - 2026-10-28`);
     expect(read('LICENSE')).toContain('Copyright (c) 2026 ShieldLabs Inc.');
     const readme = read('README.md');
-    for (const text of [
-      '## Connect with OAuth',
-      '## Hosted tools',
-      '## Build from source',
-      '## Security and data handling',
+    for (const section of [
+      '## How it fits',
+      '## Install',
+      '## Quick start',
+      '## Guide',
+      '## Reference',
+      '## Security',
+      '## Errors and retries',
+      '### Troubleshooting',
+      '## Compatibility',
       '## Development',
       '## License',
-      'sign-in or registration',
-      'https://github.com/ShieldLabs-ai/skills',
     ]) {
-      expect(readme).toContain(text);
+      expect(readme).toContain(section);
+    }
+    for (const variable of [
+      'SHIELDLABS_API_KEY',
+      'SHIELDLABS_SECRET_KEY',
+      'SHIELDLABS_DOMAIN',
+      'SHIELDLABS_WEBHOOK_SECRET',
+      'SHIELDLABS_API_BASE_URL',
+      'SHIELDLABS_MANAGEMENT_BASE_URL',
+      'SHIELDLABS_MCP_TOKEN',
+    ]) {
+      expect(readme).toContain(`\`${variable}\``);
     }
   });
 
@@ -141,9 +152,13 @@ describe('package metadata', () => {
 describe('catalog', () => {
   it('explains every known signal slug and every detection flag', () => {
     const slugs = RISK_SIGNAL_CATALOG.map((info) => info.slug);
-    for (const slug of Object.values(SIGNALS)) expect(slugs).toContain(slug);
+    const currentSlug: Record<string, string> = {
+      privacy_relay: 'private_relay',
+      stun_not_checked: 'network_check_incomplete',
+    };
+    for (const slug of Object.values(SIGNALS)) expect(slugs).toContain(currentSlug[slug] ?? slug);
     expect(new Set(slugs).size).toBe(slugs.length);
-    expect(DETECTION_FLAG_KEYS).toHaveLength(26);
+    expect(DETECTION_FLAG_KEYS).toHaveLength(20);
     for (const info of RISK_SIGNAL_CATALOG) {
       if (info.related_flag !== null) expect(DETECTION_FLAG_KEYS).toContain(info.related_flag);
       expect(info.meaning.endsWith('.')).toBe(true);
@@ -185,9 +200,12 @@ describe('documentation style', () => {
       for (const prompt of (await client.listPrompts()).prompts) {
         const args: Record<string, string> =
           prompt.name === 'investigate_user'
-            ? { user_hid: 'a91f3c7e5b2d4086' }
+            ? { domain: '11111111-1111-4111-8111-111111111111', user_hid: 'a91f3c7e5b2d4086' }
             : prompt.name === 'review_request'
-              ? { request_id: '02f1d973-84db-4156-a7f7-e799e6bf389b' }
+              ? {
+                  domain: '11111111-1111-4111-8111-111111111111',
+                  identification_id: '02f1d973-84db-4156-a7f7-e799e6bf389b',
+                }
               : {};
         expectHouseStyle(
           prompt.name,

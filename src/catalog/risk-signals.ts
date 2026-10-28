@@ -1,4 +1,4 @@
-import type { DetectionFlags } from '@shieldlabs-ai/node';
+import type { DetectionFlagKey } from './detection-flags.js';
 
 export type RiskSignalGroup =
   'network' | 'consistency' | 'environment' | 'automation' | 'correction' | 'marker';
@@ -13,7 +13,7 @@ export interface RiskSignalInfo {
   /** Current production weight, or null when the weight varies. The identification's own weight wins. */
   typical_weight: number | null;
   /** The detection flag that usually comes with this risk signal, if any. */
-  related_flag: keyof DetectionFlags | null;
+  related_flag: DetectionFlagKey | null;
   /** What the risk signal indicates. */
   meaning: string;
   /** How to read it next to other risk signals. */
@@ -25,6 +25,16 @@ export interface RiskSignalInfo {
  * not listed here, and weights can change. This catalog explains names; it never decides.
  */
 export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
+  {
+    slug: 'banned_ip',
+    label: 'Banned IP',
+    group: 'marker',
+    typical_weight: null,
+    related_flag: 'banned_ip',
+    meaning: 'The backend reports the IP as banned.',
+    reading:
+      'Use the returned risk state and score. This flag alone does not establish a numeric weight or a 999 marker.',
+  },
   {
     slug: 'tor',
     label: 'Tor',
@@ -99,11 +109,11 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
       'Near-certain non-human traffic. It counts independently of the connection type, also next to Tor.',
   },
   {
-    slug: 'stun_not_checked',
-    label: 'STUN not Checked',
+    slug: 'network_check_incomplete',
+    label: 'Network Check Incomplete',
     group: 'environment',
     typical_weight: 30,
-    related_flag: 'stun_not_checked',
+    related_flag: 'network_check_incomplete',
     meaning:
       'The network path check did not complete, so the connection could not be fully verified.',
     reading:
@@ -116,9 +126,9 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     typical_weight: -30,
     related_flag: null,
     meaning:
-      'A correction: the network check completed after the first score and cancels stun_not_checked.',
+      'A correction: the network check completed after the first score and cancels network_check_incomplete.',
     reading:
-      'A negative weight that appears together with stun_not_checked. It has no detection_flags key.',
+      'A negative weight that appears together with network_check_incomplete. It has no detection_flags key.',
   },
   {
     slug: 'os_not_detected',
@@ -134,7 +144,7 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     label: 'Browser VPN/Proxy',
     group: 'network',
     typical_weight: 30,
-    related_flag: 'browser_vpn_proxy',
+    related_flag: 'vpn',
     meaning: 'An in-browser VPN or proxy extension is in use, rather than a system-wide VPN.',
     reading:
       'Stands in for the proxy, datacenter, abuser, operating system, network check and timezone weights. Not added together with anti-detect browser or JavaScript disabled.',
@@ -150,11 +160,11 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
       'Common and often legitimate (corporate or privacy use), so a light signal on its own. It stands in for the proxy, datacenter, abuser, operating system, network check and timezone weights; anti-detect browser still adds on top.',
   },
   {
-    slug: 'privacy_relay',
-    label: 'Privacy Relay',
+    slug: 'private_relay',
+    label: 'Private Relay',
     group: 'network',
     typical_weight: 15,
-    related_flag: 'privacy_relay',
+    related_flag: 'private_relay',
     meaning: 'The connection goes through iCloud Private Relay or a similar privacy relay.',
     reading:
       'Mainstream and privacy-driven. When it is present, other network, operating system and anti-detect weights are not added next to it.',
@@ -173,7 +183,7 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     label: 'Datacenter IP',
     group: 'network',
     typical_weight: 10,
-    related_flag: 'datacenter_ip',
+    related_flag: null,
     meaning:
       'The IP address belongs to a datacenter or hosting network rather than a home or mobile provider.',
     reading:
@@ -184,7 +194,7 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     label: 'Abuser Flag',
     group: 'network',
     typical_weight: 10,
-    related_flag: 'abuser',
+    related_flag: null,
     meaning: 'The IP address has a record of abuse in IP reputation data.',
     reading: 'Prior abuse on the address. Read it together with the other network risk signals.',
   },

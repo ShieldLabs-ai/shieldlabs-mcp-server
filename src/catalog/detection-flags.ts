@@ -34,13 +34,13 @@ export interface DetectionFlagInfo {
   meaning: string;
 }
 
-/** Current signals plus legacy names retained for existing MCP consumers. */
+/** The 20 detection flags of contract 2026-10-13. */
 export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
   {
     flag: 'private_relay',
     label: 'Private Relay',
     scored: true,
-    meaning: 'Privacy relay evidence; privacy_relay is the legacy name.',
+    meaning: 'The connection goes through iCloud Private Relay or a similar privacy relay.',
   },
   {
     flag: 'network_check_incomplete',
@@ -81,18 +81,6 @@ export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
   },
   { flag: 'vpn', label: 'VPN', scored: true, meaning: 'A VPN was detected on the connection.' },
   {
-    flag: 'privacy_relay',
-    label: 'Privacy Relay',
-    scored: true,
-    meaning: 'The connection goes through iCloud Private Relay or a similar privacy relay.',
-  },
-  {
-    flag: 'browser_vpn_proxy',
-    label: 'Browser VPN/Proxy',
-    scored: true,
-    meaning: 'An in-browser VPN or proxy extension is in use.',
-  },
-  {
     flag: 'tor',
     label: 'Tor',
     scored: true,
@@ -104,18 +92,6 @@ export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
     scored: true,
     meaning:
       'The connection is routed through a proxy (from a scored risk signal or IP reputation data).',
-  },
-  {
-    flag: 'datacenter_ip',
-    label: 'Datacenter IP',
-    scored: true,
-    meaning: 'The IP address belongs to a datacenter or hosting network.',
-  },
-  {
-    flag: 'abuser',
-    label: 'Abuser Flag',
-    scored: true,
-    meaning: 'The IP address has a record of abuse in IP reputation data.',
   },
   {
     flag: 'os_mismatch',
@@ -168,24 +144,11 @@ export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
       'A known search-engine crawler. Its Risk Score is set to 0 and its traffic channel is Search bot.',
   },
   {
-    flag: 'suspicious_paid_click',
-    label: 'Suspicious Paid Click',
-    scored: false,
-    meaning:
-      'An identification on an ads or social channel (Google Ads, Meta, TikTok, LinkedIn, X, Pinterest, Microsoft Ads) with a Risk Score of 60 or more.',
-  },
-  {
     flag: 'javascript_disabled',
     label: 'JavaScript Disabled',
     scored: true,
     meaning:
       'The browser lacks capabilities every ordinary browser has: a headless or automated client.',
-  },
-  {
-    flag: 'stun_not_checked',
-    label: 'STUN not Checked',
-    scored: true,
-    meaning: 'The network path check did not complete.',
   },
   {
     flag: 'check_incomplete',

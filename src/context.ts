@@ -6,7 +6,6 @@ import {
   type DomainProfile,
   type FetchLike,
 } from '@shieldlabs-ai/node';
-import { filteredHistoryFetch, type HistoryFilters } from './history-filters.js';
 import { splitSecrets, type ServerConfig } from './config.js';
 import {
   HISTORY_TOOL_NAMES,
@@ -74,7 +73,6 @@ export interface SharedRequest<T> {
 export interface ServerContext {
   config: ServerConfig;
   history: ShieldLabs | undefined;
-  historyForFilters: (filters: HistoryFilters) => ShieldLabs | undefined;
   management: ShieldLabsManagement | undefined;
   /** Tools this process exposes, after availability and the --tools allowlist. */
   enabledTools: ReadonlySet<ToolName>;
@@ -157,7 +155,6 @@ export function createContext(config: ServerConfig, deps: ContextDependencies = 
 
   const { apiKey, secretKey, domain } = config;
   let history: ShieldLabs | undefined;
-  let historyForFilters: ServerContext['historyForFilters'] = () => undefined;
   if (apiKey !== undefined) {
     requireHttps('SHIELDLABS_API_BASE_URL', config.apiBaseUrl);
     // Every History API request of the process goes through one budget, whatever tool sends it.
@@ -175,15 +172,6 @@ export function createContext(config: ServerConfig, deps: ContextDependencies = 
           ...retries,
         }),
     );
-    historyForFilters = (filters) =>
-      Object.keys(filters).length === 0
-        ? history
-        : new ShieldLabs({
-            apiKey,
-            ...(config.apiBaseUrl !== undefined ? { baseUrl: config.apiBaseUrl } : {}),
-            fetch: filteredHistoryFetch(fetch, filters),
-            ...retries,
-          });
   }
 
   let management: ShieldLabsManagement | undefined;
@@ -214,7 +202,6 @@ export function createContext(config: ServerConfig, deps: ContextDependencies = 
   return {
     config,
     history,
-    historyForFilters,
     management,
     enabledTools: new Set(enabled),
     unavailableRequestedTools,

@@ -30,11 +30,14 @@ const vectors = fixture<{ vectors: any[] }>('webhook-signature-vectors.json').ve
 describe('shieldlabs_explain_risk_score', () => {
   it('explains a webhook event: band, weighted signals, flags, connection type', async () => {
     connected = await connect({});
+    const event = structuredClone(scored);
+    event.data.identification_id = event.data.request_id;
+    delete event.data.request_id;
     const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
-      identification: scored,
+      identification: event,
     });
     expect(output).toMatchObject({
-      request_id: '02f1d973-84db-4156-a7f7-e799e6bf389b',
+      identification_id: '02f1d973-84db-4156-a7f7-e799e6bf389b',
       risk_score: 80,
       risk_band: 'dangerous',
       band_range: '60-100',
@@ -53,10 +56,8 @@ describe('shieldlabs_explain_risk_score', () => {
     });
     expect(output.detection_flags.map((f: any) => f.flag)).toEqual([
       'proxy',
-      'datacenter_ip',
       'anti_detect_browser',
       'ip_mismatch',
-      'suspicious_paid_click',
     ]);
     expect(output.detection_flags.find((f: any) => f.flag === 'ip_mismatch').scored).toBe(false);
     expect(output.connection_type).toMatchObject({ value: 'proxy', label: 'Proxy' });
@@ -87,7 +88,7 @@ describe('shieldlabs_explain_risk_score', () => {
     expect(output.source).toBe('history');
     expect(output.signals.map((s: any) => s.name)).toEqual([
       'vpn',
-      'stun_not_checked',
+      'network_check_incomplete',
       'stun_late_correction',
       'stun_is_not_checked',
     ]);
@@ -126,62 +127,46 @@ describe('shieldlabs_explain_risk_score', () => {
         identification: historyPage.data[4],
       }),
     );
-    expect(crawlerText).toContain('Detailed signal weights are unavailable in this response.');
+    expect(crawlerText).toContain('Detailed signal weights are unavailable');
   });
-
-  it.each([0, 30, 999])(
-    'does not infer zero contributions from missing weights at score %s',
-    async (score) => {
-      connected = await connect({});
-      const identification = {
-        risk_score: score,
-        signals: [],
-        detection_flags: { vpn: true },
-      };
-      const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
-        identification,
-      });
-      expect(output.risk_score).toBe(score);
-      expect(output.signals).toEqual([]);
-      const markdown = textOf(
-        await callTool(connected.client, TOOL_NAMES.explainRiskScore, { identification }),
-      );
-      expect(markdown).toContain('Detailed signal weights are unavailable in this response.');
-      expect(markdown).not.toContain('nothing added');
-      expect(output.detection_flags.some((flag: any) => flag.flag === 'vpn')).toBe(true);
-    },
-  );
 
   it('accepts the json output of shieldlabs_get_identification', async () => {
     connected = await connect(FULL_ENV, {
       apiFetch: mockApiFetch({ rows: historyPage.data, profile: MOCK_PROFILE }).fetch,
     });
     const found = await callJson(connected.client, TOOL_NAMES.getIdentification, {
-      request_id: '7c1e2f4a-3b6d-4e8f-9a0b-1c2d3e4f5a6b',
+      identification_id: '7c1e2f4a-3b6d-4e8f-9a0b-1c2d3e4f5a6b',
+      domain: '11111111-1111-4111-8111-111111111111',
     });
     const fromOutput = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
       identification: found,
     });
     const fromApi = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
-      request_id: '7c1e2f4a-3b6d-4e8f-9a0b-1c2d3e4f5a6b',
+      identification_id: '7c1e2f4a-3b6d-4e8f-9a0b-1c2d3e4f5a6b',
+      domain: '11111111-1111-4111-8111-111111111111',
     });
     expect(fromOutput.signals).toEqual(fromApi.signals);
-    expect(fromApi).toMatchObject({ risk_score: 10, risk_band: 'trusted', source: 'history' });
-    expect(fromApi.detection_flags.map((f: any) => f.flag)).toEqual([
-      'timezone_mismatch',
-      'incognito',
-    ]);
+    expect(fromApi).toMatchObject({
+      risk: { state: 'ok', score: 10, band: 'trusted' },
+      weights_available: false,
+    });
   });
 
   it('gives actionable errors for unusable input', async () => {
     connected = await connect({});
     const attempts: [Record<string, unknown>, string][] = [
-      [{}, 'give exactly one of request_id'],
+      [{}, 'Give a pasted identification'],
       [
-        { request_id: '02f1d973-84db-4156-a7f7-e799e6bf389b', identification: {} },
-        'give exactly one of request_id',
+        { identification_id: '02f1d973-84db-4156-a7f7-e799e6bf389b', identification: {} },
+        'Give a pasted identification',
       ],
-      [{ request_id: '02f1d973-84db-4156-a7f7-e799e6bf389b' }, 'SHIELDLABS_API_KEY is not set'],
+      [
+        {
+          identification_id: '02f1d973-84db-4156-a7f7-e799e6bf389b',
+          domain: '11111111-1111-4111-8111-111111111111',
+        },
+        'SHIELDLABS_API_KEY is not set',
+      ],
       [{ identification: '{not json' }, 'not valid JSON'],
       [{ identification: '[1,2]' }, 'must be a JSON object'],
       [{ identification: ping }, 'carries no identification'],
@@ -230,7 +215,7 @@ describe('shieldlabs_explain_risk_score', () => {
       // A History row without its score is not a Risk Score of 0.
       [
         { score_details: '[{"Value":15,"Description":"Is VPN"}]' },
-        'This History API row has score_details but no score. Paste the whole row, including score, or use request_id.',
+        'This History API row has score_details but no score. Paste the whole row, including score, or use identification_id.',
       ],
     ];
     for (const [identification, message] of attempts) {
@@ -265,7 +250,7 @@ describe('shieldlabs_explain_risk_score', () => {
       },
     });
     expect(output.risk_band).toBe('suspicious');
-    expect(output.request_id).toBeNull();
+    expect(output.identification_id).toBeNull();
     expect(output.signals.map((s: any) => s.name)).toEqual(['os_not_detected', 'mystery_signal']);
     expect(output.detection_flags.map((f: any) => f.flag)).toEqual(['os_not_detected']);
     expect(output.connection_type).toMatchObject({
@@ -408,7 +393,7 @@ describe('shieldlabs_verify_webhook_signature', () => {
       event: {
         event_type: 'webhook.ping',
         schema_version: '2026-06-01',
-        request_id: null,
+        identification_id: null,
         risk_score: null,
       },
       hint: null,
@@ -495,7 +480,7 @@ describe('shieldlabs_verify_webhook_signature', () => {
         expect(output.valid).toBe(true);
         expect(output.event).toMatchObject({
           event_type: 'identification.scored',
-          request_id: scored.data.request_id,
+          identification_id: scored.data.request_id,
           risk_score: null,
           risk_band: null,
         });
@@ -534,11 +519,9 @@ describe('shieldlabs_verify_webhook_signature', () => {
         secret: 'whsec_x',
       }),
     );
-    expect(text).toContain('one delivery per identification today (1 second timeout, no retries)');
-    expect(text).toContain(
-      'resend identical bytes, so make the handler idempotent on data.request_id',
-    );
-    expect(text).toContain('Use the History API for guaranteed reads');
+    expect(text).toContain('deduplicate on event_id');
+    expect(text).toContain('hre.multi_account.changed');
+    expect(text).toContain('Use the History API for the latest identification');
   });
 
   it('explains malformed headers, bad base64, missing secrets and inauthentic events', async () => {

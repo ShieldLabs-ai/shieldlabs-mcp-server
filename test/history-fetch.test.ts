@@ -217,8 +217,12 @@ describe('History request budget', () => {
       apiFetch: counting,
       historyBudget: { maxConcurrent: 2, perSecond: 1000 },
     });
-    const calls = ['203.0.113.200', '198.51.100.10', '198.51.100.11', '203.0.113.9'].map((ip) =>
-      callTool(connected!.client, TOOL_NAMES.searchHistory, { type: 'ip', value: ip, limit: 1 }),
+    const calls = ['acct-a', 'acct-b', 'acct-c', 'acct-d'].map((_user) =>
+      callTool(connected!.client, TOOL_NAMES.searchHistory, {
+        type: 'user',
+        domain: '11111111-1111-4111-8111-111111111111',
+        limit: 1,
+      }),
     );
     const results = await Promise.all(calls);
     for (const result of results) expect(result.isError, textOf(result)).toBeFalsy();

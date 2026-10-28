@@ -7,6 +7,7 @@
 // Then start the MCP server with:
 //   SHIELDLABS_API_KEY=sec_evaldata-mockdata-00000001 SHIELDLABS_API_BASE_URL=http://127.0.0.1:8788
 // (and SHIELDLABS_SECRET_KEY / SHIELDLABS_DOMAIN / SHIELDLABS_MANAGEMENT_BASE_URL for the profile).
+import { MOCK_DOMAIN_ID, entityReply } from './entity-mock.mjs';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
@@ -123,6 +124,21 @@ export function createMockApi({
       if (method !== 'GET') return text(404, '404 page not found');
       if (parsed.pathname === '/health') return text(200, '{"status":"ok"}', 'application/json');
       if (parsed.pathname === '/v1/profile') return profileRoute(header);
+      const entity = parsed.pathname.match(
+        /^\/api\/v1\/domains\/([^/]+)\/history\/(identifications|user|visitor|device|ip)(?:\/([^/]+))?$/,
+      );
+      if (entity) {
+        if (bearer(header) !== apiKey) return json(401, { error: 'invalid_token' });
+        if (entity[1] !== MOCK_DOMAIN_ID) return json(403, { error: { code: 'forbidden' } });
+        const reply = entityReply(
+          sorted,
+          entity[2],
+          entity[3] === undefined ? undefined : decodeURIComponent(entity[3]),
+          parsed.searchParams,
+          domain,
+        );
+        return json(reply.status, reply.body);
+      }
       const match = parsed.pathname.match(/^\/api\/v1\/history\/([^/]+)\/([^/]+)$/);
       if (match === null) return text(404, '404 page not found');
       let decoded;
