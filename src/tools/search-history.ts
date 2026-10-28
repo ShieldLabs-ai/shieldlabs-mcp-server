@@ -2,6 +2,14 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { CHARACTER_LIMIT, LOOKUP_TYPES, TOOL_NAMES } from '../constants.js';
 import type { ServerContext } from '../context.js';
+import {
+  HistoryFilterShape,
+  HistoryFiltersSchema,
+  historyFilterRanges,
+  historyFilters,
+  historyFilterNote,
+  type HistoryFilters,
+} from '../history-filters.js';
 import { ToolInputError } from '../errors.js';
 import { code, UNTRUSTED_DATA_FIELD_NOTE, UNTRUSTED_DATA_NOTE } from '../format.js';
 import {
@@ -74,11 +82,14 @@ const InputSchema = z
       .describe(
         'Number of identifications to skip, for paging (default 0). Use next_offset from the previous page.',
       ),
+    ...HistoryFilterShape,
     response_format: ResponseFormatSchema,
   })
-  .strict();
+  .strict()
+  .superRefine(historyFilterRanges);
 
 export const OutputSchema = z.object({
+  filters: HistoryFiltersSchema.optional(),
   lookup: z.object({ type: z.enum(LOOKUP_TYPES), value: z.string() }),
   total: z.number().int().describe('Identifications matching the lookup'),
   count: z.number().int().describe('Identifications in this response'),
@@ -96,7 +107,11 @@ type SearchOutput = z.infer<typeof OutputSchema>;
 
 function searchMarkdown(output: SearchOutput): string {
   const { lookup, total, count, offset } = output;
-  const lines = [`# History for ${lookup.type} ${code(lookup.value)}`, ''];
+  const lines = [
+    `# History for ${lookup.type} ${code(lookup.value)}`,
+    '',
+    ...historyFilterNote(output.filters),
+  ];
   if (count === 0) {
     lines.push(
       total > 0
@@ -129,12 +144,14 @@ export function buildSearchOutput(
   total: number,
   offset: number,
   limit: number,
+  filters: HistoryFilters = {},
 ): { output: SearchOutput; markdown: string } {
   let shown = items;
   for (;;) {
     const hasMore = offset + shown.length < total;
     const output: SearchOutput = {
       lookup,
+      ...(Object.keys(filters).length ? { filters } : {}),
       total,
       count: shown.length,
       offset,
@@ -162,7 +179,7 @@ export function registerSearchHistory(server: McpServer, ctx: ServerContext): vo
     TOOL_NAMES.searchHistory,
     {
       title: 'Search history',
-      description: `List identifications for one identifier from the ShieldLabs History API, newest first, with paging.
+      description: `List identifications for one identifier from the ShieldLabs History API, newest first, with paging. Optional date, raw-score and 17 boolean History filters are ANDed within that identifier and domain. Omit a filter to leave it unconstrained. For dangerous Risk Score use score_from=60 and score_to=100; 999 is a separate rate-limit marker. Totals are filtered. Keep all filters unchanged when paging.
 
 Use it to see individual identifications of an account (user_hid), a device (device_id), a browser visitor (visitor_id), a cookie (cookie_id), a visit (session_id) or an IPv4 address (ip). For counts and aggregates over many identifications, prefer shieldlabs_summarize_entity.
 
@@ -185,10 +202,12 @@ Errors: invalid values are refused before any request (UUID or IPv4 expected; IP
       outputSchema: OutputSchema,
       annotations: readOnlyAnnotations('Search history', true),
     },
-    async ({ type, value, limit, offset, response_format }, extra) => {
+    async ({ type, value, limit, offset, response_format, ...constraints }, extra) => {
       try {
         checkLookupValue(type, value);
-        const client = requireHistory(ctx);
+        requireHistory(ctx);
+        const filters = historyFilters(constraints);
+        const client = ctx.historyForFilters(filters)!;
         const page = await client.history.search(type, value, {
           limit,
           offset,
@@ -201,6 +220,7 @@ Errors: invalid values are refused before any request (UUID or IPv4 expected; IP
           page.total,
           offset,
           limit,
+          filters,
         );
         return respond(
           ctx,

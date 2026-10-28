@@ -1,6 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ShieldLabs } from '@shieldlabs-ai/node';
 import { z } from 'zod';
+import {
+  HistoryFilterShape,
+  HistoryFiltersSchema,
+  historyFilterRanges,
+  historyFilters,
+  historyFilterNote,
+} from '../history-filters.js';
 import { ENTITY_TYPES, TOOL_NAMES } from '../constants.js';
 import type { ServerContext } from '../context.js';
 import {
@@ -49,11 +56,14 @@ const InputSchema = z
       .describe(
         `Most recent identifications to analyze, from 1 to ${MAX_MAX_ITEMS} (default ${DEFAULT_MAX_ITEMS}). Each 100 identifications cost one History API request, from the domain's shared limit.`,
       ),
+    ...HistoryFilterShape,
     response_format: ResponseFormatSchema,
   })
-  .strict();
+  .strict()
+  .superRefine(historyFilterRanges);
 
 const OutputSchema = z.object({
+  filters: HistoryFiltersSchema.optional(),
   lookup: z.object({ type: z.enum(ENTITY_TYPES), value: z.string() }),
   computed_from: z.string(),
   window: z.object({
@@ -119,7 +129,13 @@ function dimensionLine(label: string, dimension: Summary['devices']): string {
 export function summaryMarkdown(output: SummaryOutput): string {
   const { lookup, window, summary } = output;
   const { risk } = summary;
-  const lines = [`# Summary of ${lookup.type} ${code(lookup.value)}`, '', output.computed_from, ''];
+  const lines = [
+    `# Summary of ${lookup.type} ${code(lookup.value)}`,
+    '',
+    output.computed_from,
+    '',
+    ...historyFilterNote(output.filters),
+  ];
   if (window.identifications_analyzed === 0) {
     lines.push(
       `No identifications found for ${lookup.type} ${code(lookup.value)}, so there is nothing to summarize in this history window.`,
@@ -213,7 +229,7 @@ export function registerSummarizeEntity(server: McpServer, ctx: ServerContext): 
 
 The result is computed by this server from the returned history window (the most recent max_items identifications), and labelled as such: it is not a ShieldLabs verdict. It counts distinct devices, accounts, visitors, countries, IPs and connection types (with the top values), the highest and average Risk Score, band counts, rate-limit markers, detection flags and risk signals seen with counts, and the first and last observed time.
 
-Use it for questions such as: how many accounts used this device, how many devices this account used, which countries an account came from, whether an IP sent automated traffic. Use shieldlabs_search_history to see the individual identifications.
+Use it for questions such as: how many accounts used this device, how many devices this account used, which countries an account came from, whether an IP sent automated traffic. Use shieldlabs_search_history to see the individual identifications. Optional date, raw-score and 17 boolean History filters are ANDed within this identifier and domain, on every page. Totals and aggregates cover only matching rows. Omit filters for the previous behavior; for dangerous use score_from=60 and score_to=100 to exclude marker 999.
 
 Args:
   - type ('user_hid' | 'device_id' | 'visitor_id' | 'ip' | 'cookie_id')
@@ -228,12 +244,15 @@ The user count ignores values that do not name an account: null, "anonymous", "f
       outputSchema: OutputSchema,
       annotations: readOnlyAnnotations('Summarize user, device, visitor or IP', true),
     },
-    async ({ type, value, max_items, response_format }, extra) => {
+    async ({ type, value, max_items, response_format, ...constraints }, extra) => {
       try {
         checkLookupValue(type, value);
-        const client = requireHistory(ctx);
+        requireHistory(ctx);
+        const filters = historyFilters(constraints);
+        const client = ctx.historyForFilters(filters)!;
         const { items, total } = await readWindow(client, type, value, max_items, extra.signal);
         const output: SummaryOutput = {
+          ...(Object.keys(filters).length ? { filters } : {}),
           lookup: {
             type,
             value: type === 'user_hid' || type === 'ip' ? value : value.toLowerCase(),

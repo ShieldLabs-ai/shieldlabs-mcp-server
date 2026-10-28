@@ -150,3 +150,44 @@ separate from a managed-service deployment or an official client-directory listi
 ## License
 
 [MIT](LICENSE). ShieldLabs Inc. Support: contact@shieldlabs.ai.
+
+### Optional History filters
+
+`shieldlabs_search_history` and `shieldlabs_summarize_entity` accept `from`, `to`,
+`score_from`, `score_to` and the 17 boolean public History row fields. All predicates are
+ANDed inside the selected identifier and domain. Omit a field to leave it unconstrained;
+`false` and `0` are real values. This does not add domain-wide enumeration or arbitrary filters.
+
+Dates are inclusive UTC: `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS` with up to nine fractional
+digits, without `T`, `Z` or timezone offsets. Date-only `from` starts at midnight and date-only
+`to` ends at `23:59:59.999`, matching the API. Scores are integer 0-999; `999` is a
+rate-limit marker, separate from the 0-100 Risk Score. For dangerous use both bounds 60-100.
+
+Examples (retain `domain` for hosted calls when needed):
+
+```json
+{"type":"user_hid","value":"<User HID>","from":"2026-10-01","to":"2026-10-28","score_from":60,"score_to":100,"is_vpn":true,"is_proxy":false}
+```
+
+```json
+{"type":"device_id","value":"<device UUID>","score_from":0,"score_to":0,"is_search_bot":true}
+```
+
+```json
+{"type":"ip","value":"203.0.113.24","score_from":999,"score_to":999}
+```
+
+Boolean query names: `is_vpn`, `is_tor`, `is_proxy`, `is_datacenter`, `is_abuser`,
+`is_privacy_relay`, `is_stun_not_checked`, `check_incomplete`, `is_antidetect`,
+`is_os_mismatch`, `is_os_not_detected`, `is_timezone_mismatch`, `is_js_disabled`,
+`is_browser_automation`, `is_incognito`, `is_search_bot`, `is_suspicious_paid_click`.
+For search bots, `check_incomplete`, `is_js_disabled` and `is_incognito` are false,
+matching the public response. These query names differ from normalized detection flag names;
+current flags such as `ai_bot` are not automatically queryable.
+
+When filters are present, JSON and Markdown report them. `total`, paging and summary statistics
+refer to matching rows. Keep every filter unchanged on later pages. An empty filtered result
+means no matching rows, not no activity. Invalid inputs fail before a request; an API 400 is
+an error and is never retried or replaced by an unfiltered query. SDK 1.0.1 drops new search
+options, so the local MCP attaches the allowlisted filters in its scoped HTTP fetch adapter.
+Hosted MCP includes them in the gateway-signed query. Neither changes authentication or limits.

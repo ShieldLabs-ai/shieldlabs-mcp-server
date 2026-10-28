@@ -1,3 +1,5 @@
+import { HISTORY_FLAG_PARAMS } from '../src/history-filters.js';
+import historyFixture from './fixtures/history-page.json';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { describe, expect, it } from 'vitest';
@@ -111,6 +113,90 @@ async function connect(host: ReturnType<Host>, token = HOSTED_TOKEN) {
 /** Same actual MCP Client suite runs through Node handler and the Worker entry in workerd. */
 export function operationsSuite(host: Host) {
   describe('hosted operations contract', () => {
+    it('signs every History filter, preserves false/zero and repeats constraints on all summary pages', async () => {
+      const backend = operationsBackend();
+      const row = historyFixture.data[0]!;
+      backend.force({ status: 200, body: { data: [row], total: 3 } });
+      const client = await connect(host(backend), `slat_${'F'.repeat(43)}`);
+      try {
+        const filters = {
+          from: '2026-10-01',
+          to: '2026-10-28 23:59:59.123456789',
+          score_from: 0,
+          score_to: 100,
+          ...Object.fromEntries(HISTORY_FLAG_PARAMS.map((key, i) => [key, i % 2 === 0])),
+        };
+        for (const name of ['shieldlabs_search_history', 'shieldlabs_summarize_entity']) {
+          const start = backend.calls.length;
+          const reply = await client.callTool({
+            name,
+            arguments: {
+              type: 'user_hid',
+              value: 'test-account',
+              domain: 'example.com',
+              ...filters,
+              response_format: 'markdown',
+            },
+          });
+          expect(reply.isError).not.toBe(true);
+          expect(reply.structuredContent).toMatchObject({ filters });
+          expect(JSON.stringify(reply.content)).toContain('Filters (AND');
+          const calls = backend.calls
+            .slice(start)
+            .filter((c) => c.path.startsWith('/mcp/v1/history/'));
+          expect(calls).toHaveLength(name === 'shieldlabs_search_history' ? 1 : 3);
+          for (const call of calls) {
+            const url = new URL(call.path, UPSTREAM);
+            expect(url.searchParams.get('domain')).toBe('example.com');
+            for (const [key, value] of Object.entries(filters))
+              expect(url.searchParams.get(key), key).toBe(String(value));
+            // Backend verifies the signature independently before accepting each request.
+            expect(call.token).toBe(`slat_${'F'.repeat(43)}`);
+          }
+        }
+      } finally {
+        await client.close();
+      }
+    });
+    it('rejects invalid History filters before the gateway and never retries a backend 400', async () => {
+      const backend = operationsBackend();
+      const client = await connect(host(backend), `slat_${'G'.repeat(43)}`);
+      try {
+        const start = backend.calls.length;
+        for (const name of ['shieldlabs_search_history', 'shieldlabs_summarize_entity']) {
+          for (const filters of [
+            { is_vpn: 'false' },
+            { score_from: 1000 },
+            { score_from: 60, score_to: 59 },
+            { from: '2026-02-30' },
+            { from: '2026-10-28T00:00:00Z' },
+            { from: '2026-10-29', to: '2026-10-28' },
+            { is_ai_bot: true },
+          ]) {
+            const reply = await client.callTool({
+              name,
+              arguments: { type: 'user_hid', value: 'test-account', ...filters },
+            });
+            expect(reply.isError).toBe(true);
+          }
+        }
+        expect(backend.calls.length).toBe(start);
+        backend.force({
+          status: 400,
+          body: { code: 'invalid_request', error: 'invalid history input' },
+        });
+        const reply = await client.callTool({
+          name: 'shieldlabs_search_history',
+          arguments: { type: 'user_hid', value: 'test-account', is_vpn: true },
+        });
+        expect(reply.isError).toBe(true);
+        expect(JSON.stringify(reply)).toContain('invalid_request');
+        expect(backend.calls.length).toBe(start + 1);
+      } finally {
+        await client.close();
+      }
+    });
+
     it('exposes add_domain instead of the old create_domain name', async () => {
       const backend = operationsBackend();
       const client = await connect(host(backend));

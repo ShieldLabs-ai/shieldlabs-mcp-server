@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased : History filters
+
+- Add optional AND-only UTC date, raw-score and 17 boolean History constraints to search and
+  entity summaries, with filtered scope in JSON/Markdown and unchanged unfiltered behavior.
+- Forward constraints through the SDK HTTP adapter and signed OAuth requests on every page;
+  validate calendar dates, ranges and strict boolean values without changing authentication.
+
+
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
