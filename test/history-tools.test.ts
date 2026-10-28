@@ -1,3 +1,4 @@
+import { canonicalSignalName } from '../src/catalog/risk-signals.js';
 import { CURRENT_DETECTION_FLAG_KEYS } from '../src/catalog/detection-flags.js';
 import type { FetchLike, FetchRequestInit } from '@shieldlabs-ai/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -91,11 +92,15 @@ describe('shieldlabs_get_identification', () => {
           network_check_incomplete: testCase.expected.detection_flags.stun_not_checked,
           latency_test: null,
           device_spoofing: null,
-          banned_ip: testCase.expected.risk_score === 999 ? true : null,
+          rate_limited: testCase.expected.risk_score === 999 ? true : null,
           ai_bot: null,
           ai_browser: null,
         },
-        signals: testCase.expected.signals.map((signal: any) => ({ ...signal, description: null })),
+        signals: testCase.expected.signals.map((signal: any) => ({
+          ...signal,
+          name: canonicalSignalName(signal.name),
+          description: null,
+        })),
       };
       expected.detection_flags = Object.fromEntries(
         CURRENT_DETECTION_FLAG_KEYS.map((key) => [

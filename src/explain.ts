@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { bandInfo, bandOf, bandRange, RATE_LIMIT_MARKER_NOTE } from './catalog/bands.js';
 import { connectionTypeInfo } from './catalog/connection-types.js';
 import { DETECTION_FLAG_KEYS, detectionFlagInfo } from './catalog/detection-flags.js';
-import { riskSignalInfo, UNKNOWN_SIGNAL_MEANING } from './catalog/risk-signals.js';
+import {
+  canonicalSignalName,
+  riskSignalInfo,
+  UNKNOWN_SIGNAL_MEANING,
+} from './catalog/risk-signals.js';
 import { CHARACTER_LIMIT } from './constants.js';
 import { ToolInputError } from './errors.js';
 import {
@@ -284,7 +288,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
   };
   const signals = input.signals.slice(0, shown).map((signal) => {
     const info = riskSignalInfo(signal.name);
-    const { text: name, cut } = bound(signal.name, MAX_SIGNAL_NAME_LENGTH);
+    const { text: name, cut } = bound(canonicalSignalName(signal.name), MAX_SIGNAL_NAME_LENGTH);
     if (cut) longNames += 1;
     return {
       name,
@@ -314,7 +318,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
     );
   if (band === 'rate_limited') {
     notes.push(
-      'The 999 marker is not a Risk Score. Its signal can be banned_ip in the current contract or rate_limited in an older profile; it only marks the ban.',
+      'The 999 marker is outside the 0-100 Risk Score scale. rate_limited indicates that the identification rate limit was exceeded.',
     );
   }
   if (input.flags.search_bot === true) {
@@ -328,7 +332,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
       'Some risk signal names are not in this server catalog (newer or less common risk signals). Their weights still counted.',
     );
   }
-  const names = input.signals.map((s) => s.name);
+  const names = input.signals.map((s) => canonicalSignalName(s.name));
   if (new Set(names).size < names.length) {
     notes.push(
       'A risk signal name can repeat: an earlier result for the same device and IP address can be carried forward with a partial weight, and a late network check adds a correction.',

@@ -384,7 +384,7 @@ describe('JSON Schemas', () => {
         'network_check_incomplete',
         'latency_test',
         'device_spoofing',
-        'banned_ip',
+        'rate_limited',
         'ai_bot',
         'ai_browser',
       ])

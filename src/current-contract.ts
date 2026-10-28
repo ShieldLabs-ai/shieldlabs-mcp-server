@@ -6,7 +6,7 @@ import {
 } from './catalog/detection-flags.js';
 import { cutSerialized, escapeInvisible } from './format.js';
 
-/** MCP retains legacy keys, while unavailable current signals are explicitly null. */
+/** Accept legacy input names; return canonical keys and null for unavailable signals. */
 export function currentFlags(
   raw: Record<string, unknown>,
 ): Record<CurrentDetectionFlagKey, boolean | null> {
@@ -16,10 +16,14 @@ export function currentFlags(
   const aliases: Record<CurrentDetectionFlagKey, string[]> = {
     vpn: ['is_vpn'],
     proxy: ['is_proxy'],
-    private_relay: ['privacy_relay', 'is_privacy_relay'],
+    private_relay: ['privacy_relay', 'is_privacy_relay', 'is_private_relay'],
     tor: ['is_tor'],
     check_incomplete: ['check_incomplete', 'is_check_incomplete'],
-    network_check_incomplete: ['stun_not_checked', 'is_stun_not_checked'],
+    network_check_incomplete: [
+      'stun_not_checked',
+      'is_stun_not_checked',
+      'is_network_check_incomplete',
+    ],
     os_not_detected: ['is_os_not_detected'],
     timezone_mismatch: ['is_timezone_mismatch'],
     javascript_disabled: ['is_js_disabled'],
@@ -28,7 +32,7 @@ export function currentFlags(
     latency_test: ['is_latency_test', 'is_ws_tcp_latency', 'ws_tcp_latency'],
     anti_detect_browser: ['is_antidetect'],
     device_spoofing: ['is_device_spoof', 'is_device_spoofing'],
-    banned_ip: ['is_rate_limited', 'is_banned_ip', 'rate_limited'],
+    rate_limited: ['banned_ip', 'is_rate_limited', 'is_banned_ip'],
     incognito: ['is_incognito'],
     search_bot: ['is_search_bot'],
     ai_bot: ['is_ai_bot'],
@@ -48,8 +52,8 @@ export function currentFlags(
   if (history && (raw.connection_type === 'browser_vpn_proxy' || raw.is_browser_vpn_proxy === true))
     result.vpn = true;
   if (history && raw.is_os_mismatch2 === true) result.os_mismatch = true;
-  if (result.banned_ip === null && (raw.score === 999 || raw.risk_score === 999))
-    result.banned_ip = true;
+  if (result.rate_limited === null && (raw.score === 999 || raw.risk_score === 999))
+    result.rate_limited = true;
   return result;
 }
 

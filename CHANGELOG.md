@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased : Public signal names
+
+- Use private_relay, network_check_incomplete, latency_test and rate_limited in MCP
+  projections and reference catalogs. Accept the previous signal names as input aliases.
+- Explain the 999 rate-limit marker consistently and refresh the public webhook schema
+  from OpenAPI 8af12c0 without changing raw signed payloads or their signature verification.
+
 ## Unreleased : History filters
 
 - Add optional AND-only UTC date, raw-score and 17 boolean History constraints to search and

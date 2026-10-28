@@ -87,7 +87,7 @@ describe('shieldlabs_explain_risk_score', () => {
     expect(output.source).toBe('history');
     expect(output.signals.map((s: any) => s.name)).toEqual([
       'vpn',
-      'stun_not_checked',
+      'network_check_incomplete',
       'stun_late_correction',
       'stun_is_not_checked',
     ]);
