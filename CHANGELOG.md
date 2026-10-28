@@ -2,7 +2,7 @@
 
 ## Unreleased : History filters
 
-- Add optional AND-only UTC date, raw-score and 17 boolean History constraints to search and
+- Add optional AND-only UTC date, raw-score and 20 boolean History constraints to search and
   entity summaries, with filtered scope in JSON/Markdown and unchanged unfiltered behavior.
 - Forward constraints through the SDK HTTP adapter and signed OAuth requests on every page;
   validate calendar dates, ranges and strict boolean values without changing authentication.
