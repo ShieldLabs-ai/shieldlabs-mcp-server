@@ -13,6 +13,12 @@ export const BUILT_IN_SETUP_GUIDE = `# Integrate ShieldLabs (built-in guide)
 Inspect the project and reuse existing configuration. Follow https://shieldlabs.ai/get-started.md
 and the setup skill at https://github.com/ShieldLabs-ai/skills when available.
 
+Show an evidence-based progress map before editing: account/MCP, domain coverage, browser SDK,
+stored result and selected server/user-linking/HRE/webhook stages. Mark verified, needs check,
+pending, not selected or blocked. On resume inspect current code and read state; do not repeat
+verified work or mutations. Inventory production/staging/preview hostnames and inspect parent
+allow_subdomains; separate keys are an isolation choice, not mandatory child registration.
+
 ## Guided stages
 
 Ask whether the user has an account only when unknown and no authenticated connection exists.
@@ -56,6 +62,10 @@ The agent loads from https://cdn.shieldlabs.ai. Follow the documented CSP. Test 
 HTTPS hostname. A browser UUID alone does not prove that the identification was accepted.
 Only add User HID linking when required; compute it on the server with the SDK helper.
 
+For order or promo context, store server-authoritative action references in the application's
+own database, scoped by tenant/domain and identification UUID. Reconcile either webhook/action
+arrival order. Do not invent an SDK tag. Group HRE events have no identification UUID.
+
 ## 3. Existing backend
 
 \`\`\`ts
@@ -92,6 +102,21 @@ backend when configured. Scoring is asynchronous: wait within the supported budg
 boundedly if still pending. Inspect Risk Score, flags, hostname and timestamps. Empty detailed
 weights do not mean a zero score. Report each check as passed, failed or not configured; never
 claim a sample Test event or a synthetic fixture proves a real integration.
+
+## Optional backend HRE and client identity
+
+Consume backend account_sharing/account_takeover/impossible_travel status, reason and level
+when present; do not substitute a custom History count. Multi-account group transitions are
+separate hre.multi_account.changed events without a Risk Score or identification UUID. If
+selected, configure multiaccount through the current MCP schema, read it back and verify the
+receiver plus real emission. Release profiles may disable this capability. Queue both scored
+and group envelopes, deduplicate signed event_id atomically and compare group revisions as
+UInt64 decimal strings within site/epoch/cluster scope. Keep resolved tombstones.
+
+Keep client_identity claims distinct from verified subjects and evidence. Provider proof does
+not prove an agent/service. Missing/null metadata is unknown, not human. The MCP projection is
+bounded; warnings mean evidence may be incomplete. Retain route-specific access controls.
+
 `;
 export interface SetupGuide {
   text: string;

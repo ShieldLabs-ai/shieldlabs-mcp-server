@@ -166,6 +166,41 @@ export function summaryMarkdown(output: SummaryOutput): string {
   if (unlisted > 0) {
     lines.push(`- and ${unlisted} less frequent risk signal name${unlisted === 1 ? '' : 's'}`);
   }
+  if (summary.high_risk_events) {
+    lines.push(
+      '',
+      '## Reported High-Risk Events',
+      '- Backend snapshots present in the returned window; separate from the Risk Score and from multi-account group notifications.',
+    );
+    for (const item of summary.high_risk_events.outcomes)
+      lines.push(
+        `- ${code(item.kind)}: status ${code(item.status)}, level ${code(String(item.level))}, ${item.count} snapshot(s)`,
+      );
+  }
+  if (summary.metadata_incomplete)
+    lines.push(
+      `Metadata was incomplete or shortened in ${summary.metadata_incomplete} snapshots. These display counts are partial, not authorization proof.`,
+    );
+  if (summary.client_identity) {
+    lines.push(
+      '',
+      '## Client identity',
+      `- Reported in ${summary.client_identity.reported} snapshots; unavailable in ${summary.client_identity.unavailable}. Missing identity data does not mean human.`,
+    );
+    for (const item of summary.client_identity.claims)
+      lines.push(
+        `- Claimed provider ${code(String(item.provider_name))}, agent ${code(String(item.agent_name))}: ${item.count} (unverified claims)`,
+      );
+    for (const item of summary.client_identity.verified)
+      lines.push(
+        `- Verified attribute ${code(String(item.subject))}: ${code(String(item.value_id))}, ${item.count}; proof does not extend to other attributes`,
+      );
+  }
+  if (summary.flags_unavailable?.length)
+    lines.push(
+      '',
+      '- Some signals were unavailable in this response; null is not a negative detection.',
+    );
   return lines.join('\n');
 }
 

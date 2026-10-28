@@ -1,0 +1,1747 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cdn.jsdelivr.net/npm/@shieldlabs-ai/openapi@1/dist/schemas/webhook-event.schema.json",
+  "title": "ShieldLabs webhook event",
+  "type": "object",
+  "description": "Any body ShieldLabs posts to a webhook endpoint. `identification.scored`, `webhook.ping`, and `hre.multi_account.changed` events must match their own schema; events with another `event_type` only need the envelope, so a new event type never breaks validation.",
+  "required": ["event_type", "schema_version", "created_at"],
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Event type, for example `identification.scored` or `webhook.ping`.",
+      "examples": ["identification.scored"]
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "created_at": {
+      "$ref": "#/$defs/Rfc3339Timestamp"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "identification.scored"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "$ref": "#/$defs/IdentificationScoredEvent"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "webhook.ping"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "$ref": "#/$defs/WebhookPingEvent"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "hre.multi_account.changed"
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "$ref": "#/$defs/MultiaccountChangedEvent"
+      }
+    }
+  ],
+  "$defs": {
+    "Browser": {
+      "type": "string",
+      "description": "Browser name, for example `Chrome`, `Safari`, `Firefox`, `Microsoft Edge`, `Opera`, `Samsung Internet`, `Brave`, `Chrome (iOS)`, `Safari (iOS)` or `Unknown`. Open set: display it, do not branch on it.",
+      "examples": ["Chrome", "Safari"]
+    },
+    "ClickIdType": {
+      "type": "string",
+      "description": "Ad click identifier found in the landing URL. Known values: `gclid`, `gbraid`, `wbraid`, `msclkid`, `ttclid`, `fbclid` and the empty string when there is none. `fbclid` counts only together with a Meta referrer or a Meta `utm_source`. The set is open: keep values added in later versions.",
+      "examples": ["gclid", ""]
+    },
+    "ConnectionType": {
+      "type": "string",
+      "description": "How the visitor connected. Known values:\n- `direct`: a regular connection;\n- `mobile`: a mobile carrier network;\n- `vpn`: a VPN;\n- `proxy`: a proxy, datacenter or hosting network (search-engine crawlers are reported here too);\n- `tor`: the Tor network;\n- `privacy_relay`: a privacy relay such as iCloud Private Relay;\n- `browser_vpn_proxy`: a VPN or proxy built into the browser or one of its extensions;\n- `unknown`: not enough data.\n\nThe value can say `vpn` while `detection_flags.vpn` is `false` (IP intelligence classified the\nnetwork, but the scored VPN check did not fire). Branch on `detection_flags` for decisions.\nThe set is open: keep values added in later versions and treat them as `unknown`.",
+      "examples": ["direct"]
+    },
+    "CookieId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "First-party browser identifier kept by the ShieldLabs agent (UUID v4). A missing or malformed value is stored as the nil UUID.",
+      "examples": ["c7d9e1f3-a5b7-4c9d-ae1f-3a5b7c9d1e3f"]
+    },
+    "Country": {
+      "type": "string",
+      "description": "English country name from IP intelligence, for example `Germany` or `United States` (not an ISO code). Empty string when the country is unknown.",
+      "examples": ["Netherlands", "United States", ""]
+    },
+    "DetectionFlags": {
+      "type": "object",
+      "description": "The 20 public detection signals in scored webhook contract 2026-10-13. os_mismatch is true when either OS detector fired. browser_vpn_proxy contributes to vpn and is not its own flag. Groups and owner attribution are separate from this set.",
+      "required": [
+        "vpn",
+        "proxy",
+        "private_relay",
+        "check_incomplete",
+        "network_check_incomplete",
+        "os_not_detected",
+        "timezone_mismatch",
+        "javascript_disabled",
+        "os_mismatch",
+        "ip_mismatch",
+        "latency_test",
+        "anti_detect_browser",
+        "device_spoofing",
+        "banned_ip",
+        "incognito",
+        "search_bot",
+        "ai_bot",
+        "browser_automation",
+        "ai_browser",
+        "tor"
+      ],
+      "properties": {
+        "vpn": {
+          "type": "boolean",
+          "description": "A VPN was detected, including a VPN or proxy built into the browser. connection_type may still be browser_vpn_proxy."
+        },
+        "proxy": {
+          "type": "boolean",
+          "description": "A proxy was detected."
+        },
+        "private_relay": {
+          "type": "boolean",
+          "description": "A privacy relay such as iCloud Private Relay was detected. Older payloads used privacy_relay."
+        },
+        "check_incomplete": {
+          "type": "boolean",
+          "description": "Part of the browser checks timed out, so the verdict rests on partial data. Informational. Weight 0, and present in signals when true."
+        },
+        "network_check_incomplete": {
+          "type": "boolean",
+          "description": "The browser network (STUN) check did not complete. Cleared again when a late network result arrives. Older payloads used stun_not_checked."
+        },
+        "os_not_detected": {
+          "type": "boolean",
+          "description": "The operating system could not be determined from the User-Agent or the network."
+        },
+        "timezone_mismatch": {
+          "type": "boolean",
+          "description": "The browser timezone differs from the timezone of the IP location."
+        },
+        "javascript_disabled": {
+          "type": "boolean",
+          "description": "JavaScript, or the browser APIs the checks need, were unavailable."
+        },
+        "os_mismatch": {
+          "type": "boolean",
+          "description": "Either operating-system consistency detector fired. The two detectors are not separate public flags."
+        },
+        "ip_mismatch": {
+          "type": "boolean",
+          "description": "A qualifying mismatch between the public IP and the browser's network evidence was detected. Nominal weight 45; read the returned Risk Score."
+        },
+        "latency_test": {
+          "type": "boolean",
+          "description": "The WebSocket-to-TCP latency test fired. Older payloads used ws_tcp_latency."
+        },
+        "anti_detect_browser": {
+          "type": "boolean",
+          "description": "An anti-detect browser was detected."
+        },
+        "device_spoofing": {
+          "type": "boolean"
+        },
+        "banned_ip": {
+          "type": "boolean",
+          "description": "The visitor IP is banned for this window. The matching signal weight is 999. Older payloads used rate_limited."
+        },
+        "incognito": {
+          "type": "boolean",
+          "description": "The browser runs in a private window. Weight 0, and present in signals when true."
+        },
+        "search_bot": {
+          "type": "boolean",
+          "description": "A search-engine crawler. Its Risk Score is always 0. Weight 0, and present in signals when true."
+        },
+        "ai_bot": {
+          "type": "boolean",
+          "description": "A recognized AI bot or crawler. Its Risk Score is always 0. ShieldLabs identifies the provider when available. Weight 0, and present in signals when true."
+        },
+        "browser_automation": {
+          "type": "boolean",
+          "description": "Browser automation was detected, for example a WebDriver-controlled browser. Catalogue weight is 90 for task 204 scoring releases; historical result versions may retain the earlier weight 60."
+        },
+        "ai_browser": {
+          "type": "boolean",
+          "description": "A recognized AI browser. Its Risk Score is always 0. ShieldLabs identifies the provider when available. Weight 0, and present in signals when true."
+        },
+        "tor": {
+          "type": "boolean",
+          "description": "The request came through the Tor network."
+        }
+      },
+      "additionalProperties": false
+    },
+    "DetectionFlags20261012": {
+      "type": "object",
+      "description": "Retained scored webhook contract 2026-10-12. Twenty-one source detection signals, with os_mismatch and os_mismatch2 independent. Current deliveries use DetectionFlags (2026-10-13).",
+      "required": [
+        "vpn",
+        "proxy",
+        "privacy_relay",
+        "check_incomplete",
+        "stun_not_checked",
+        "os_not_detected",
+        "timezone_mismatch",
+        "javascript_disabled",
+        "os_mismatch",
+        "os_mismatch2",
+        "ip_mismatch",
+        "latency_test",
+        "anti_detect_browser",
+        "device_spoofing",
+        "banned_ip",
+        "incognito",
+        "search_bot",
+        "ai_bot",
+        "browser_automation",
+        "ai_browser",
+        "tor"
+      ],
+      "properties": {
+        "vpn": {
+          "type": "boolean",
+          "description": "A VPN or Browser VPN/Proxy was detected."
+        },
+        "proxy": {
+          "type": "boolean",
+          "description": "A proxy was detected."
+        },
+        "privacy_relay": {
+          "type": "boolean",
+          "description": "A privacy relay such as iCloud Private Relay was detected."
+        },
+        "check_incomplete": {
+          "type": "boolean",
+          "description": "Part of the browser checks timed out, so the verdict rests on partial data. Informational."
+        },
+        "stun_not_checked": {
+          "type": "boolean",
+          "description": "The browser network (STUN) check did not complete. Cleared again when a late network result arrives."
+        },
+        "os_not_detected": {
+          "type": "boolean",
+          "description": "The operating system could not be determined from the User-Agent or the network."
+        },
+        "timezone_mismatch": {
+          "type": "boolean",
+          "description": "The browser timezone differs from the timezone of the IP location."
+        },
+        "javascript_disabled": {
+          "type": "boolean",
+          "description": "JavaScript, or the browser APIs the checks need, were unavailable."
+        },
+        "os_mismatch": {
+          "type": "boolean",
+          "description": "The first operating system consistency detector found a mismatch. Independent of os_mismatch2."
+        },
+        "os_mismatch2": {
+          "type": "boolean",
+          "description": "The second operating system consistency detector (TCP behaviour) found a mismatch. Independent of os_mismatch."
+        },
+        "ip_mismatch": {
+          "type": "boolean",
+          "description": "A qualifying mismatch between the public IP and the browser's network evidence was detected. Read the returned Risk Score and signal contributions."
+        },
+        "latency_test": {
+          "type": "boolean"
+        },
+        "anti_detect_browser": {
+          "type": "boolean",
+          "description": "An anti-detect browser was detected."
+        },
+        "device_spoofing": {
+          "type": "boolean"
+        },
+        "banned_ip": {
+          "type": "boolean"
+        },
+        "incognito": {
+          "type": "boolean",
+          "description": "The browser runs in a private window."
+        },
+        "search_bot": {
+          "type": "boolean",
+          "description": "A search-engine crawler. Its Risk Score is always 0."
+        },
+        "ai_bot": {
+          "type": "boolean",
+          "description": "An already accepted crawler has purpose training or user_fetch. ChatGPT-User, Claude-User and Perplexity-User are AI bots, not AI browsers. A User-Agent claim alone does not grant an accepted verdict."
+        },
+        "browser_automation": {
+          "type": "boolean",
+          "description": "Browser automation was detected, for example a WebDriver-controlled browser. Catalogue weight is 90 for task 204 scoring releases; historical result versions may retain the earlier weight 60."
+        },
+        "ai_browser": {
+          "type": "boolean",
+          "description": "A browser has separately verified infrastructure or service attribution. A User-Agent claim or provider-only IP proof is insufficient."
+        },
+        "tor": {
+          "type": "boolean",
+          "description": "The request came through the Tor network."
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeviceId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Server-side device identifier (UUID v5). It survives cleared cookies and private windows. The nil UUID `00000000-0000-0000-0000-000000000000` means that no usable device signals were collected (for example on rate-limit marker rows): never group identifications by it.",
+      "examples": ["d8e0f2a4-b6c8-4d0e-bf2a-4b6c8d0e2f4a", "00000000-0000-0000-0000-000000000000"]
+    },
+    "DeviceType": {
+      "type": "string",
+      "description": "Device class from the browser. Known values: `desktop`, `mobile`, `tablet` and `unknown` (the class could not be determined). The set is open: keep values added in later versions and treat them as `unknown`.",
+      "examples": ["desktop"]
+    },
+    "HRE": {
+      "type": "object",
+      "required": ["account_sharing", "account_takeover", "impossible_travel"],
+      "properties": {
+        "rules_version": {
+          "type": "string"
+        },
+        "account_sharing": {
+          "$ref": "#/$defs/HREResult"
+        },
+        "account_takeover": {
+          "$ref": "#/$defs/HREResult"
+        },
+        "impossible_travel": {
+          "$ref": "#/$defs/HREResult"
+        }
+      },
+      "description": "Three completed on-demand handler results. Technical errors block emission; no_history/skipped are explicit not_evaluated results. Anonymous checks are not_applicable. Multiaccount is separate."
+    },
+    "HREResult": {
+      "type": "object",
+      "required": ["status", "level", "reason"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "examples": ["evaluated", "not_evaluated", "not_applicable"]
+        },
+        "level": {
+          "type": ["string", "null"],
+          "examples": ["medium", "high", null]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "devices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "min_devices": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cluster_id": {
+          "type": ["string", "null"],
+          "description": "Authoritative cluster ID for this HRE result. Null when no cluster was published for the result, including old stored verdicts; never a device ID. Reused on retries."
+        }
+      }
+    },
+    "IdentificationId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifies one identification. The browser creates it as a UUID v4 and hands it to your page; it is the join key between the browser, the webhook and the History API. The nil UUID appears only on rate-limit marker rows that arrived with a malformed Identification ID.",
+      "examples": ["a5b7c9d1-e3f5-4a7b-9c1d-3e5f7a9b1c3d"]
+    },
+    "IdentificationScoredData": {
+      "type": "object",
+      "description": "Final identification. risk_score is this scan only. Version 2026-10-13 uses signals for score contributions, including fired signals of weight 0, detection_flags for 20 public signals, and hre for account results. Older bodies remain accepted.",
+      "required": [
+        "identification_id",
+        "visitor_id",
+        "device_id",
+        "session_id",
+        "cookie_id",
+        "user_hid",
+        "domain",
+        "public_ip",
+        "local_ip",
+        "connection_type",
+        "os",
+        "browser",
+        "device_type",
+        "traffic_source",
+        "risk_score",
+        "signals",
+        "detection_flags",
+        "observed_at"
+      ],
+      "properties": {
+        "client_identity": {
+          "$ref": "#/$defs/WebhookClientIdentity",
+          "description": "Optional best-effort attribution. May be omitted or null; every nested field is also optional and nullable. Integrations must work without these values."
+        },
+        "identification_id": {
+          "$ref": "#/$defs/IdentificationId"
+        },
+        "visitor_id": {
+          "$ref": "#/$defs/VisitorId"
+        },
+        "device_id": {
+          "$ref": "#/$defs/DeviceId"
+        },
+        "session_id": {
+          "$ref": "#/$defs/SessionId"
+        },
+        "cookie_id": {
+          "$ref": "#/$defs/CookieId"
+        },
+        "user_hid": {
+          "$ref": "#/$defs/UserHid"
+        },
+        "domain": {
+          "type": "string",
+          "description": "Registered domain of your site (the request host when no registered domain matched).",
+          "examples": ["example.com"]
+        },
+        "public_ip": {
+          "$ref": "#/$defs/IpInfo",
+          "description": "Public IPv4 address of the HTTP request and its country. `ip` is empty when the request did not arrive over IPv4."
+        },
+        "local_ip": {
+          "$ref": "#/$defs/IpInfo",
+          "description": "Local IP address found by the browser network check (WebRTC): the leaked address when a local network leak was found, otherwise the address ShieldLabs observed. Both keys are empty when the check found nothing."
+        },
+        "connection_type": {
+          "$ref": "#/$defs/ConnectionType"
+        },
+        "os": {
+          "$ref": "#/$defs/OperatingSystem"
+        },
+        "browser": {
+          "$ref": "#/$defs/Browser"
+        },
+        "device_type": {
+          "$ref": "#/$defs/DeviceType"
+        },
+        "traffic_source": {
+          "$ref": "#/$defs/TrafficSource"
+        },
+        "risk_score": {
+          "$ref": "#/$defs/RiskScore"
+        },
+        "signals": {
+          "type": "array",
+          "description": "Weighted risk signals behind `risk_score`, in scoring order. Can be empty. The rate-limit marker carries exactly one entry, `{\"name\":\"banned_ip\",\"weight\":999}`.",
+          "items": {
+            "$ref": "#/$defs/Signal"
+          }
+        },
+        "detection_flags": {
+          "type": "object",
+          "description": "Contract 2026-10-13 requires DetectionFlags (exactly 20 public signals). 2026-10-12 keeps its 21-flag schema. Older versions keep LegacyDetectionFlags.",
+          "additionalProperties": true,
+          "properties": {
+            "vpn": {
+              "type": "boolean"
+            },
+            "proxy": {
+              "type": "boolean"
+            },
+            "tor": {
+              "type": "boolean"
+            },
+            "private_relay": {
+              "type": "boolean"
+            },
+            "privacy_relay": {
+              "type": "boolean"
+            },
+            "network_check_incomplete": {
+              "type": "boolean"
+            },
+            "stun_not_checked": {
+              "type": "boolean"
+            },
+            "latency_test": {
+              "type": "boolean"
+            },
+            "ws_tcp_latency": {
+              "type": "boolean"
+            },
+            "banned_ip": {
+              "type": "boolean"
+            },
+            "rate_limited": {
+              "type": "boolean"
+            },
+            "check_incomplete": {
+              "type": "boolean"
+            },
+            "os_not_detected": {
+              "type": "boolean"
+            },
+            "timezone_mismatch": {
+              "type": "boolean"
+            },
+            "javascript_disabled": {
+              "type": "boolean"
+            },
+            "os_mismatch": {
+              "type": "boolean"
+            },
+            "os_mismatch2": {
+              "type": "boolean"
+            },
+            "ip_mismatch": {
+              "type": "boolean"
+            },
+            "anti_detect_browser": {
+              "type": "boolean"
+            },
+            "device_spoofing": {
+              "type": "boolean"
+            },
+            "incognito": {
+              "type": "boolean"
+            },
+            "search_bot": {
+              "type": "boolean"
+            },
+            "ai_bot": {
+              "type": "boolean"
+            },
+            "ai_browser": {
+              "type": "boolean"
+            },
+            "browser_automation": {
+              "type": "boolean"
+            },
+            "browser_vpn_proxy": {
+              "type": "boolean"
+            },
+            "datacenter_ip": {
+              "type": "boolean"
+            },
+            "abuser": {
+              "type": "boolean"
+            },
+            "suspicious_paid_click": {
+              "type": "boolean"
+            }
+          }
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Rfc3339Timestamp",
+          "description": "Original snapshot scan clock, distinct from envelope created_at. RFC 3339 in UTC with up to 9 fractional digits."
+        },
+        "result_version": {
+          "deprecated": true,
+          "description": "Legacy through 2026-10-08 only; omitted by current emitters.",
+          "type": "string",
+          "minLength": 1
+        },
+        "scoring_version": {
+          "deprecated": true,
+          "type": "string",
+          "description": "Legacy through 2026-10-08 only; omitted by current emitters."
+        },
+        "risk_events": {
+          "deprecated": true,
+          "description": "Legacy 2026-10-06 only; absent from current scored events.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RiskEvent"
+          }
+        },
+        "hre": {
+          "$ref": "#/$defs/HRE"
+        },
+        "search_bot_owner": {
+          "type": "string",
+          "description": "Owner label from accepted search-bot detection; omitted when unknown or inactive.",
+          "examples": ["Google"]
+        },
+        "ai_bot_owner": {
+          "type": "string",
+          "description": "Provider company label from accepted AI-bot detection; omitted when unknown or inactive.",
+          "examples": ["OpenAI"]
+        },
+        "ai_browser_owner": {
+          "type": "string",
+          "description": "Owner label from accepted AI-browser detection; omitted when unknown or inactive."
+        }
+      }
+    },
+    "IdentificationScoredEvent": {
+      "type": "object",
+      "description": "Body of an `identification.scored` delivery. The signature is not part of the body: it arrives in the `X-Shield-Signature` header.",
+      "required": ["event_type", "schema_version", "created_at", "data"],
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "const": "identification.scored",
+          "description": "Event type. Ignore events whose type you do not know instead of failing."
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Rfc3339Timestamp",
+          "description": "When the event envelope was created, distinct from data.observed_at (scan time)."
+        },
+        "data": {
+          "$ref": "#/$defs/IdentificationScoredData"
+        },
+        "event_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Logical site/request/final-result-version/type identity. Stable across retries and endpoints."
+        },
+        "site_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Site scope when available; legacy domain-only accounts omit it."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": "2026-10-06"
+              }
+            },
+            "required": ["schema_version"]
+          },
+          "then": {
+            "required": ["event_id"],
+            "properties": {
+              "data": {
+                "required": ["result_version", "scoring_version", "risk_events", "hre"],
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "result_version": {},
+                  "scoring_version": {},
+                  "risk_events": {},
+                  "hre": {}
+                }
+              },
+              "event_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Logical site/request/final-result-version/type identity. Stable across retries and endpoints."
+              }
+            },
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": ["schema_version"],
+            "properties": {
+              "schema_version": {
+                "enum": ["2026-10-07", "2026-10-08", "2026-10-09", "2026-10-12", "2026-10-13"]
+              }
+            },
+            "additionalProperties": true
+          },
+          "then": {
+            "type": "object",
+            "required": ["event_id"],
+            "properties": {
+              "event_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Logical site/request/final-result-version/type identity. Stable across retries and endpoints."
+              },
+              "data": {
+                "type": "object",
+                "required": ["hre"],
+                "properties": {
+                  "result_version": {},
+                  "scoring_version": {},
+                  "risk_events": {},
+                  "fingerprint": {},
+                  "hre": {
+                    "type": "object",
+                    "properties": {
+                      "account_sharing": {
+                        "type": "object",
+                        "required": ["cluster_id"],
+                        "properties": {
+                          "cluster_id": {}
+                        },
+                        "additionalProperties": true
+                      },
+                      "account_takeover": {
+                        "type": "object",
+                        "required": ["cluster_id"],
+                        "properties": {
+                          "cluster_id": {}
+                        },
+                        "additionalProperties": true
+                      },
+                      "impossible_travel": {
+                        "type": "object",
+                        "required": ["cluster_id"],
+                        "properties": {
+                          "cluster_id": {}
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": true,
+                "not": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": ["risk_events"],
+                      "properties": {
+                        "risk_events": {}
+                      },
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "required": ["fingerprint"],
+                      "properties": {
+                        "fingerprint": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "schema_version": {
+                "enum": ["2026-10-08", "2026-10-09", "2026-10-12", "2026-10-13"]
+              }
+            },
+            "required": ["schema_version"],
+            "additionalProperties": true
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "connection_type": {
+                    "type": "string",
+                    "not": {
+                      "const": "browser_vpn_proxy"
+                    }
+                  },
+                  "signals": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "not": {
+                            "const": "browser_vpn_proxy"
+                          }
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "detection_flags": {
+                    "type": "object",
+                    "not": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["browser_vpn_proxy"],
+                          "properties": {
+                            "browser_vpn_proxy": {}
+                          },
+                          "additionalProperties": true
+                        },
+                        {
+                          "type": "object",
+                          "required": ["datacenter_ip"],
+                          "properties": {
+                            "datacenter_ip": {}
+                          },
+                          "additionalProperties": true
+                        },
+                        {
+                          "type": "object",
+                          "required": ["abuser"],
+                          "properties": {
+                            "abuser": {}
+                          },
+                          "additionalProperties": true
+                        },
+                        {
+                          "type": "object",
+                          "required": ["suspicious_paid_click"],
+                          "properties": {
+                            "suspicious_paid_click": {}
+                          },
+                          "additionalProperties": true
+                        }
+                      ]
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "schema_version": {
+                "enum": ["2026-10-07", "2026-10-08"]
+              }
+            },
+            "required": ["schema_version"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "required": ["result_version", "scoring_version"],
+                "properties": {
+                  "result_version": {},
+                  "scoring_version": {}
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "schema_version": {
+                "enum": ["2026-10-09", "2026-10-12", "2026-10-13"]
+              }
+            },
+            "required": ["schema_version"],
+            "additionalProperties": true
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "not": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": ["result_version"],
+                      "properties": {
+                        "result_version": {}
+                      },
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "required": ["scoring_version"],
+                      "properties": {
+                        "scoring_version": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": ["schema_version"],
+            "properties": {
+              "schema_version": {
+                "enum": ["2026-10-07", "2026-10-08", "2026-10-09"]
+              }
+            },
+            "additionalProperties": true
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "detection_flags": {
+                    "type": "object",
+                    "not": {
+                      "type": "object",
+                      "required": ["os_mismatch2"],
+                      "properties": {
+                        "os_mismatch2": {}
+                      },
+                      "additionalProperties": true
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": ["schema_version"],
+            "properties": {
+              "schema_version": {
+                "not": {
+                  "enum": ["2026-10-12", "2026-10-13"]
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "detection_flags": {
+                    "$ref": "#/$defs/LegacyDetectionFlags"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": ["schema_version"],
+            "properties": {
+              "schema_version": {
+                "const": "2026-10-12"
+              }
+            },
+            "additionalProperties": true
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "detection_flags": {
+                    "$ref": "#/$defs/DetectionFlags20261012"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": ["schema_version"],
+            "properties": {
+              "schema_version": {
+                "const": "2026-10-13"
+              }
+            },
+            "additionalProperties": true
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "detection_flags": {
+                    "$ref": "#/$defs/DetectionFlags"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      ]
+    },
+    "IpInfo": {
+      "type": "object",
+      "description": "An IPv4 address and its country. Both keys are always present and can be empty strings.",
+      "required": ["ip", "country"],
+      "properties": {
+        "ip": {
+          "$ref": "#/$defs/Ipv4OrEmpty"
+        },
+        "country": {
+          "$ref": "#/$defs/Country"
+        }
+      }
+    },
+    "Ipv4OrEmpty": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3})?$",
+      "description": "Dotted IPv4 address, or an empty string when no IPv4 address is known (for example for visitors on IPv6).",
+      "examples": ["203.0.113.24", ""]
+    },
+    "LegacyDetectionFlags": {
+      "type": "object",
+      "description": "Detection flags in retained webhook and History payloads before 2026-10-12. Missing extension flags are not evaluated negative results.",
+      "required": [
+        "vpn",
+        "privacy_relay",
+        "tor",
+        "proxy",
+        "os_mismatch",
+        "os_not_detected",
+        "timezone_mismatch",
+        "anti_detect_browser",
+        "browser_automation",
+        "ip_mismatch",
+        "incognito",
+        "search_bot",
+        "javascript_disabled",
+        "stun_not_checked",
+        "check_incomplete"
+      ],
+      "properties": {
+        "vpn": {
+          "type": "boolean",
+          "description": "A VPN or Browser VPN/Proxy was detected."
+        },
+        "privacy_relay": {
+          "type": "boolean",
+          "description": "A privacy relay such as iCloud Private Relay was detected."
+        },
+        "browser_vpn_proxy": {
+          "type": "boolean",
+          "deprecated": true,
+          "description": "A VPN or proxy built into the browser or one of its extensions. `true` exactly when `connection_type` is `browser_vpn_proxy`."
+        },
+        "tor": {
+          "type": "boolean",
+          "description": "The request came through the Tor network."
+        },
+        "proxy": {
+          "type": "boolean",
+          "description": "A proxy was detected."
+        },
+        "datacenter_ip": {
+          "type": "boolean",
+          "deprecated": true,
+          "description": "The public IP belongs to a datacenter or hosting range."
+        },
+        "abuser": {
+          "type": "boolean",
+          "deprecated": true,
+          "description": "The public IP has a record of abuse in IP intelligence."
+        },
+        "os_mismatch": {
+          "type": "boolean",
+          "description": "Either internal OS consistency check detected a mismatch. The public flag combines browser/network and TCP behaviour checks."
+        },
+        "os_not_detected": {
+          "type": "boolean",
+          "description": "The operating system could not be determined from the User-Agent or the network."
+        },
+        "timezone_mismatch": {
+          "type": "boolean",
+          "description": "The browser timezone differs from the timezone of the IP location."
+        },
+        "anti_detect_browser": {
+          "type": "boolean",
+          "description": "An anti-detect browser was detected."
+        },
+        "browser_automation": {
+          "type": "boolean",
+          "description": "Browser automation was detected, for example a WebDriver-controlled browser. Catalogue weight is 90 for task 204 scoring releases; historical result versions may retain the earlier weight 60."
+        },
+        "ip_mismatch": {
+          "type": "boolean",
+          "description": "A qualifying mismatch between the public IP and the browser's network evidence was detected. Read the returned Risk Score and signal contributions."
+        },
+        "incognito": {
+          "type": "boolean",
+          "description": "The browser runs in a private window."
+        },
+        "search_bot": {
+          "type": "boolean",
+          "description": "A search-engine crawler. Its Risk Score is always 0."
+        },
+        "suspicious_paid_click": {
+          "type": "boolean",
+          "deprecated": true,
+          "description": "The visit came from a paid ad click (Google Ads, Meta, TikTok, Microsoft Ads, LinkedIn, Pinterest or X) and the Risk Score is 60 or more (the 999 marker included)."
+        },
+        "javascript_disabled": {
+          "type": "boolean",
+          "description": "JavaScript, or the browser APIs the checks need, were unavailable."
+        },
+        "stun_not_checked": {
+          "type": "boolean",
+          "description": "The browser network (STUN) check did not complete. Cleared again when a late network result arrives."
+        },
+        "check_incomplete": {
+          "type": "boolean",
+          "description": "Part of the browser checks timed out, so the verdict rests on partial data. Informational."
+        },
+        "device_spoofing": {
+          "type": "boolean"
+        },
+        "latency_test": {
+          "type": "boolean",
+          "description": "Current public name of the latency detector. Payloads from schema 2026-10-13 before the slug rename used ws_tcp_latency."
+        },
+        "ws_tcp_latency": {
+          "type": "boolean",
+          "description": "Previous public name of the latency detector. Current 2026-10-13 payloads use latency_test."
+        },
+        "banned_ip": {
+          "type": "boolean",
+          "description": "Current public name of the banned-IP flag. Payloads from schema 2026-10-13 before the slug rename used rate_limited."
+        },
+        "rate_limited": {
+          "type": "boolean",
+          "description": "Previous public name of the banned-IP flag. Current 2026-10-13 payloads use banned_ip."
+        },
+        "ai_bot": {
+          "type": "boolean",
+          "description": "An accepted bot is classified as AI training or user-requested fetch. ChatGPT-User, Claude-User and Perplexity-User are AI bots, not AI browsers. Weight 0. The flag is optional on older payloads; its absence is not an evaluated negative result. Provider claims alone do not grant zero risk."
+        },
+        "ai_browser": {
+          "type": "boolean",
+          "description": "A browser is identified by separate verified browser infrastructure. A generic browser User-Agent or a verified provider alone is insufficient. Weight 0. Optional on older payloads; absence is not an evaluated negative."
+        },
+        "os_mismatch2": {
+          "type": "boolean",
+          "deprecated": true,
+          "description": "Legacy 2026-10-06 only; current payloads combine this check into os_mismatch."
+        }
+      }
+    },
+    "MultiaccountChangedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "domain",
+        "action",
+        "status",
+        "detected",
+        "level",
+        "cluster_id",
+        "revision",
+        "previous_revision",
+        "user_hids",
+        "added_user_hids",
+        "removed_user_hids",
+        "users_count",
+        "members_complete",
+        "evaluated_at",
+        "rules_version",
+        "source",
+        "evidence_summary"
+      ],
+      "properties": {
+        "kind": {
+          "const": "multi_account"
+        },
+        "domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "enum": ["detected", "updated", "resolved"]
+        },
+        "status": {
+          "const": "evaluated",
+          "description": "The result comes from a complete, verified detector source cut. Pending or unavailable work does not produce this event."
+        },
+        "detected": {
+          "type": "boolean"
+        },
+        "level": {
+          "type": ["string", "null"],
+          "enum": ["medium", "high", null]
+        },
+        "cluster_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Persistent site-qualified group identity. Unambiguous expansion or contraction preserves this ID; ambiguous split/merge starts new identities."
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}$",
+          "description": "Publication version of this transition, as a decimal string to preserve UInt64 precision."
+        },
+        "previous_revision": {
+          "type": ["string", "null"],
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "description": "Previous transition version while the group was active; null for a newly detected or reappearing group."
+        },
+        "user_hids": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "description": "Complete sorted group membership. Users from another site are never included. This list is not truncated.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "enum": ["anonymous", "-1", "fail", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        "added_user_hids": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Sorted members added since the previous transition; all current members for detected.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "removed_user_hids": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Sorted members removed since the previous transition; all previous members for resolved.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "users_count": {
+          "type": "integer",
+          "minimum": 3,
+          "description": "Equal to the length of user_hids."
+        },
+        "members_complete": {
+          "const": true
+        },
+        "evaluated_at": {
+          "$ref": "#/$defs/Rfc3339Timestamp"
+        },
+        "rules_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publication_epoch", "publication_version", "coverage_id"],
+          "properties": {
+            "publication_epoch": {
+              "const": "multiaccount-v1"
+            },
+            "publication_version": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "description": "The exact immutable publication containing this result and event."
+            },
+            "coverage_id": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "Immutable binding to the trusted source completeness proof."
+            }
+          }
+        },
+        "evidence_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basis_types", "rules", "detail_truncated"],
+          "properties": {
+            "basis_types": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string"
+              }
+            },
+            "rules": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string"
+              }
+            },
+            "detail_truncated": {
+              "type": "boolean",
+              "description": "Whether the detector's underlying detailed evidence was truncated. Group membership remains complete."
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "detected"
+              }
+            },
+            "required": ["action"]
+          },
+          "then": {
+            "additionalProperties": true,
+            "properties": {
+              "previous_revision": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "additionalProperties": true,
+            "properties": {
+              "previous_revision": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "resolved"
+              }
+            },
+            "required": ["action"]
+          },
+          "then": {
+            "additionalProperties": true,
+            "properties": {
+              "detected": {
+                "const": false
+              },
+              "level": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "additionalProperties": true,
+            "properties": {
+              "detected": {
+                "const": true
+              },
+              "level": {
+                "type": "string",
+                "enum": ["medium", "high"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "MultiaccountChangedEvent": {
+      "type": "object",
+      "description": "An immutable opt-in notification of a complete multi-account group transition.",
+      "additionalProperties": false,
+      "required": ["event_id", "event_type", "schema_version", "site_id", "created_at", "data"],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$",
+          "description": "Stable logical event ID. Delivery retries preserve this ID and the signed body."
+        },
+        "event_type": {
+          "const": "hre.multi_account.changed"
+        },
+        "schema_version": {
+          "const": "2026-10-07"
+        },
+        "site_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "$ref": "#/$defs/Rfc3339Timestamp"
+        },
+        "data": {
+          "$ref": "#/$defs/MultiaccountChangedData"
+        }
+      }
+    },
+    "OperatingSystem": {
+      "type": "string",
+      "description": "Operating system name, for example `Windows`, `Mac OS X`, `Linux`, `Android`, `IOS (iPhone)`, `IOS (iPad)`, `ChromeOS` or `Unknown`. Open set: display it, do not branch on it.",
+      "examples": ["Windows", "Mac OS X", "Android"]
+    },
+    "Rfc3339Timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+      "description": "RFC 3339 timestamp in UTC with up to 9 fractional digits (trailing zeros trimmed), for example `2026-09-30T12:34:57.482913041Z`. Parse it with a parser that accepts nanoseconds.",
+      "examples": ["2026-09-30T12:34:57.482913041Z", "2026-09-30T12:34:56Z"]
+    },
+    "RiskEvent": {
+      "type": "object",
+      "required": ["code", "detected", "weight", "contribution", "status"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Open catalogue of independent source signals. ai_bot and ai_browser carry weight 0; search_bot remains separate. browser_automation carries weight 90 in task 204 releases. UI Good bot and Bad bot groups are not risk event codes. Keep unknown codes and use the payload scoring_version/result_version for historical interpretation."
+        },
+        "detected": {
+          "type": "boolean",
+          "description": "Final scoring flag. false does not assert that every underlying probe completed."
+        },
+        "weight": {
+          "type": "integer",
+          "description": "Catalogue weight, not an additive score. Banned IP 999 is a marker."
+        },
+        "contribution": {
+          "type": "integer",
+          "description": "Matching score details, may contain corrections. Never recompute risk_score by summing."
+        },
+        "status": {
+          "type": "string",
+          "description": "The final scoring flag has been evaluated. Probe incompleteness is reported by dedicated risk events.",
+          "examples": ["evaluated"]
+        }
+      }
+    },
+    "RiskScore": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Risk Score from 0 (no risk found) to 100. Search-engine crawlers always score 0.\n\nRisk bands are computed on your side from the score; no band field exists on the wire:\n- trusted: 0-29\n- suspicious: 30-59\n- dangerous: 60-100\n\nA value above 100 is not a score. `999` is the rate-limit marker: the visitor's IP went over the\ningest rate limit, and the identification carries exactly one signal,\n`{\"name\":\"banned_ip\",\"weight\":999}`, usually with nil identifiers. Treat every value above\n100 as rate limited. One marker is written when the IP goes over the limit; Identification IDs issued\nwhile it stays blocked get no row and no webhook, so they stay unverified.\n\nThe score usually equals the sum of the signal weights capped at 100, but carried-forward\nverdicts and corrections make that unreliable: never recompute or validate it yourself.",
+      "examples": [0, 35, 80, 999]
+    },
+    "SchemaVersion": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Webhook contract version. Scored release 2026-10-13 (20 public signals); 2026-10-12 keeps 21 independent source signals; multi-account group release 2026-10-07; parsers also accept legacy 2026-06-01.",
+      "examples": [
+        "2026-10-13",
+        "2026-10-12",
+        "2026-10-09",
+        "2026-10-08",
+        "2026-10-07",
+        "2026-10-06",
+        "2026-06-01"
+      ]
+    },
+    "SessionId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "One visit on one origin (UUID v4 created in the browser), shared by the open tabs of that origin. The next visit after the last tab closes gets a new session ID. The nil UUID appears on rate-limit marker rows.",
+      "examples": ["b6c8d0e2-f4a6-4b8c-8d0e-2f4a6b8c0d2e"]
+    },
+    "Signal": {
+      "type": "object",
+      "description": "One public risk signal behind the Risk Score. Fired signals are listed in scoring order, including weight 0 (incognito, search_bot, ai_bot, ai_browser, check_incomplete). Debug rows are omitted. The same name can appear twice, and weights can be negative.",
+      "required": ["name", "weight"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Signal name. The set is open: new names can appear at any time, so keep unknown names and\nuse them for display and logging only. Known names:\n- `tor`: the request came through Tor;\n- `vpn`: a VPN was detected, including a browser VPN or proxy;\n- `private_relay`: a privacy relay such as iCloud Private Relay;\n- `proxy`: a proxy was detected;\n- `datacenter_ip`: the IP belongs to a datacenter or hosting range;\n- `abuser`: the IP has a record of abuse;\n- `browser_vpn_proxy`: a VPN or proxy inside the browser;\n- `antidetect_browser`: an anti-detect browser (the matching flag is `anti_detect_browser`);\n- `proxy_routed_antidetect`: the network check was routed through a proxy in a way typical\n  for anti-detect browsers;\n- `port_scan_routed_via_proxy`: `proxy_routed_antidetect` carried forward from an earlier\n  identification of the same device and IP;\n- `browser_automation`: browser automation, for example a WebDriver-controlled browser (90 in task 204 scoring releases);\n- `javascript_disabled`: JavaScript or the browser APIs the checks need were unavailable;\n- `os_mismatch`: either operating-system consistency detector fired;\n- `latency_test`: the WebSocket-to-TCP latency test fired;\n- `os_not_detected`: the operating system could not be determined;\n- `timezone_mismatch`: the browser timezone differs from the IP location timezone;\n- `network_check_incomplete`: the network (STUN) check did not complete;\n- `stun_late_correction`: a late network result arrived; negative weight that cancels\n  `network_check_incomplete`;\n- `banned_ip`: the rate-limit marker, weight 999.\n\nA verdict carried forward from an earlier identification of the same device and IP (for\nexample `antidetect_browser`) keeps a name derived from the original signal and can carry a\npartial weight.",
+          "examples": ["proxy", "antidetect_browser"]
+        },
+        "weight": {
+          "type": "integer",
+          "description": "Points the signal contributed. Can be negative (`stun_late_correction` is -30) and is 999 for `banned_ip`. Weights can change between releases; never add them up yourself.",
+          "examples": [10, -30]
+        }
+      }
+    },
+    "TrafficChannel": {
+      "type": "string",
+      "description": "Marketing channel of the visit. Known values: `Google Ads`, `Meta`, `TikTok`, `LinkedIn`, `X`, `Pinterest`, `Microsoft Ads`, `Organic Search`, `Search bot`, `Referral`, `Direct`, `Other` and the empty string. Resolved in this order: a click ID, then UTM parameters, then the referrer (search engines give `Organic Search`, social networks give the platform name, other sites give `Referral`), otherwise `Direct`. Search-engine crawlers get `Search bot`. Empty string on identifications without attribution, such as rate-limit marker rows. The set is open: keep values added in later versions and treat them as `Other`.",
+      "examples": ["Google Ads", "Direct"]
+    },
+    "TrafficSource": {
+      "type": "object",
+      "description": "Where the visit came from. All nine keys are always present; values can be empty strings.",
+      "required": [
+        "channel",
+        "referrer_domain",
+        "landing_url",
+        "click_id_type",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_content",
+        "utm_term"
+      ],
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/TrafficChannel"
+        },
+        "referrer_domain": {
+          "type": "string",
+          "description": "Registrable domain of the referrer without `www.`. For search-engine crawlers, the crawler name (for example `GoogleBot`).",
+          "examples": ["google.com"]
+        },
+        "landing_url": {
+          "type": "string",
+          "description": "Landing page URL without the `#fragment`. It keeps the query string, which can contain personal data: store it with care.",
+          "examples": [
+            "https://shop.example.com/signup?utm_source=google&utm_medium=cpc&gclid=abc123"
+          ]
+        },
+        "click_id_type": {
+          "$ref": "#/$defs/ClickIdType"
+        },
+        "utm_source": {
+          "type": "string",
+          "description": "`utm_source` query parameter, lowercased.",
+          "examples": ["google"]
+        },
+        "utm_medium": {
+          "type": "string",
+          "description": "`utm_medium` query parameter, lowercased.",
+          "examples": ["cpc"]
+        },
+        "utm_campaign": {
+          "type": "string",
+          "description": "`utm_campaign` query parameter as sent.",
+          "examples": ["spring_launch"]
+        },
+        "utm_content": {
+          "type": "string",
+          "description": "`utm_content` query parameter as sent.",
+          "examples": [""]
+        },
+        "utm_term": {
+          "type": "string",
+          "description": "`utm_term` query parameter as sent.",
+          "examples": [""]
+        }
+      }
+    },
+    "UserHid": {
+      "type": ["string", "null"],
+      "description": "User HID: your hashed or pseudonymous account identifier, exactly as it was passed to the\nShieldLabs agent. Pass a hashed value, never a raw email address or database ID.\n\nValues that do not identify a user:\n- `anonymous`: an anonymous check;\n- `fail`: the agent sent no value;\n- `-1` and `unknown`: rows created by ShieldLabs itself, such as rate-limit marker rows.\n\n`null` only when the stored value is an empty string. Leave `null` and the values above out\nwhen you count the accounts of one device, visitor or IP address.",
+      "examples": ["9f86d081884c7d659a2feaa0c55ad015", "anonymous", null]
+    },
+    "VisitorId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Server-side visitor identifier (UUID v5). It is sticky to the device: a new cookie on a known device keeps the existing visitor ID, so clearing cookies usually does not change it. The nil UUID appears on identifications without usable device data, such as rate-limit marker rows.",
+      "examples": ["e9f1a3b5-c7d9-4e1f-8a3b-5c7d9e1f3a5b"]
+    },
+    "WebhookClientIdentity": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "schema_version": {
+          "type": ["string", "null"],
+          "description": "Open version identifier. Version 1 is currently emitted."
+        },
+        "classification_revision": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "classifier_version": {
+          "type": ["string", "null"]
+        },
+        "registry_revision": {
+          "type": ["string", "null"]
+        },
+        "availability": {
+          "type": ["string", "null"],
+          "description": "available or input_unavailable. Missing object means no stored identity data; it does not mean human."
+        },
+        "observed_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "decided_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "claims": {
+          "type": ["array", "null"],
+          "items": {
+            "type": ["object", "null"],
+            "additionalProperties": true,
+            "properties": {
+              "profile_id": {
+                "type": ["string", "null"]
+              },
+              "provider_id": {
+                "type": ["string", "null"]
+              },
+              "provider_name": {
+                "type": ["string", "null"]
+              },
+              "agent_name": {
+                "type": ["string", "null"]
+              },
+              "client_kind": {
+                "type": ["string", "null"]
+              },
+              "purpose": {
+                "type": ["string", "null"]
+              },
+              "source": {
+                "type": ["string", "null"]
+              }
+            }
+          }
+        },
+        "verified": {
+          "type": ["array", "null"],
+          "items": {
+            "type": ["object", "null"],
+            "additionalProperties": true,
+            "properties": {
+              "subject": {
+                "type": ["string", "null"],
+                "description": "The proved attribute: provider, service or infrastructure. Proof does not extend to other attributes."
+              },
+              "value_id": {
+                "type": ["string", "null"]
+              },
+              "evidence_ids": {
+                "type": ["array", "null"],
+                "items": {
+                  "type": ["string", "null"]
+                }
+              }
+            }
+          }
+        },
+        "assessments": {
+          "type": ["array", "null"],
+          "items": {
+            "type": ["object", "null"],
+            "additionalProperties": true,
+            "properties": {
+              "candidate_profile_id": {
+                "type": ["string", "null"]
+              },
+              "status": {
+                "type": ["string", "null"]
+              },
+              "reason": {
+                "type": ["string", "null"]
+              }
+            }
+          }
+        },
+        "evidence": {
+          "type": ["array", "null"],
+          "items": {
+            "type": ["object", "null"],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": ["string", "null"]
+              },
+              "method": {
+                "type": ["string", "null"]
+              },
+              "source_id": {
+                "type": ["string", "null"]
+              },
+              "source_revision": {
+                "type": ["string", "null"]
+              },
+              "checked_at": {
+                "type": ["string", "null"],
+                "format": "date-time"
+              },
+              "evaluated_at": {
+                "type": ["string", "null"],
+                "format": "date-time"
+              },
+              "covered_attributes": {
+                "type": ["array", "null"],
+                "items": {
+                  "type": ["string", "null"]
+                }
+              },
+              "covered_components": {
+                "type": ["array", "null"],
+                "items": {
+                  "type": ["string", "null"]
+                }
+              },
+              "request_binding": {
+                "type": ["string", "null"]
+              },
+              "replay_policy": {
+                "type": ["string", "null"]
+              }
+            }
+          }
+        }
+      },
+      "description": "Optional best-effort client attribution for webhooks. The object and every nested field may be omitted or null. Availability and completeness are not guaranteed; integrations must work without this block or any of its fields. Missing or null values do not mean human or a negative verification result. Claimed names are unverified; a verified provider does not prove a service or agent. Unknown fields and string values must be accepted."
+    },
+    "WebhookPingEvent": {
+      "type": "object",
+      "description": "Body of a `webhook.ping` delivery, sent when you verify an endpoint. It has no `data`. The keys arrive sorted alphabetically and `created_at` has second precision.",
+      "required": ["event_type", "schema_version", "created_at"],
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "const": "webhook.ping",
+          "description": "Event type."
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Rfc3339Timestamp",
+          "description": "When the ping was sent, with second precision."
+        },
+        "event_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

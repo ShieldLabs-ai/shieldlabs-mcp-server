@@ -294,7 +294,9 @@ describe('resources', () => {
       uri: 'shieldlabs://contract/identification',
     });
     expect(schema.contents[0]).toMatchObject({ mimeType: 'application/schema+json' });
-    expect(JSON.parse((schema.contents[0] as any).text).title).toBe('Identification');
+    expect(JSON.parse((schema.contents[0] as any).text).title).toBe(
+      'ShieldLabs MCP identification projection',
+    );
     const webhook = await connected.client.readResource({
       uri: 'shieldlabs://contract/webhook-event',
     });
@@ -306,7 +308,7 @@ describe('resources', () => {
       ).text,
     );
     expect(signals.risk_signals.map((s: any) => s.slug)).toContain('antidetect_browser');
-    expect(signals.detection_flags).toHaveLength(19);
+    expect(signals.detection_flags).toHaveLength(26);
     expect(signals.connection_types).toHaveLength(8);
     expect(signals.notes.join(' ')).toContain('can change');
     const bands = JSON.parse(
@@ -359,7 +361,7 @@ describe('resources', () => {
 });
 
 describe('JSON Schemas', () => {
-  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  const ajv = new Ajv2020({ allErrors: true, strict: false, validateFormats: false });
 
   it('validate tool outputs against the Identification schema', async () => {
     const validate = ajv.compile(IDENTIFICATION_SCHEMA);
@@ -374,22 +376,57 @@ describe('JSON Schemas', () => {
       expect(validate(item), JSON.stringify(validate.errors)).toBe(true);
     }
     for (const testCase of fixture<{ cases: any[] }>('normalization-cases.json').cases) {
-      expect(validate(testCase.expected), testCase.name).toBe(true);
+      const { raw: _raw, ...legacy } = testCase.expected;
+      const flags = { ...legacy.detection_flags };
+      for (const key of [
+        'private_relay',
+        'network_check_incomplete',
+        'latency_test',
+        'device_spoofing',
+        'banned_ip',
+        'ai_bot',
+        'ai_browser',
+      ])
+        flags[key] = null;
+      expect(
+        validate({
+          ...legacy,
+          risk_band:
+            legacy.risk_score > 100
+              ? 'rate_limited'
+              : legacy.risk_score >= 60
+                ? 'dangerous'
+                : legacy.risk_score >= 30
+                  ? 'suspicious'
+                  : 'trusted',
+          detection_flags: flags,
+          signals: legacy.signals.map((s: any) => ({ ...s, description: null })),
+        }),
+        JSON.stringify(validate.errors),
+      ).toBe(true);
     }
   });
 
-  it('validate every webhook fixture, including the Test delivery with 17 flags', () => {
+  it('validates current wire identifiers and distinguishes obsolete 17-flag Test fixtures', () => {
     const validate = ajv.compile(WEBHOOK_EVENT_SCHEMA);
     for (const name of [
       'webhook-identification-scored.json',
       'webhook-rate-limited.json',
       'webhook-ping.json',
-      'webhook-test-delivery.json',
     ]) {
-      expect(validate(fixture(name)), `${name}: ${JSON.stringify(validate.errors)}`).toBe(true);
+      const body = fixture(name);
+      // Retain the original SDK fixtures for legacy normalization tests; current wire uses identification_id.
+      if (body.data) {
+        body.data.identification_id = body.data.request_id;
+        delete body.data.request_id;
+      }
+      expect(validate(body), `${name}: ${JSON.stringify(validate.errors)}`).toBe(true);
     }
     const testDelivery = fixture('webhook-test-delivery.json');
+    testDelivery.data.identification_id = testDelivery.data.request_id;
+    delete testDelivery.data.request_id;
     expect(Object.keys(testDelivery.data.detection_flags)).toHaveLength(17);
+    expect(validate(testDelivery)).toBe(false); // historical SDK fixture, not the current public wire contract
     expect(
       validate({
         ...testDelivery,

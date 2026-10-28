@@ -143,7 +143,7 @@ describe('catalog', () => {
     const slugs = RISK_SIGNAL_CATALOG.map((info) => info.slug);
     for (const slug of Object.values(SIGNALS)) expect(slugs).toContain(slug);
     expect(new Set(slugs).size).toBe(slugs.length);
-    expect(DETECTION_FLAG_KEYS).toHaveLength(19);
+    expect(DETECTION_FLAG_KEYS).toHaveLength(26);
     for (const info of RISK_SIGNAL_CATALOG) {
       if (info.related_flag !== null) expect(DETECTION_FLAG_KEYS).toContain(info.related_flag);
       expect(info.meaning.endsWith('.')).toBe(true);

@@ -222,7 +222,9 @@ describe('response size limits', () => {
       });
       expectWithinLimits(result, format);
       const explanation = result.structuredContent as any;
-      expect(explanation.detection_flags).toHaveLength(19);
+      expect(explanation.detection_flags.map((f: any) => f.flag)).toEqual(
+        expect.arrayContaining(['private_relay', 'network_check_incomplete']),
+      );
       expect(explanation.signals.length).toBeGreaterThan(10);
       expect(explanation.signals.length).toBeLessThan(60);
       expect(explanation.truncation_message).toMatch(

@@ -1,7 +1,7 @@
 import { NIL_UUID, type Identification } from '@shieldlabs-ai/node';
 import { z } from 'zod';
 import { bandOf } from './catalog/bands.js';
-import { DETECTION_FLAG_KEYS } from './catalog/detection-flags.js';
+import { CURRENT_DETECTION_FLAG_KEYS, DETECTION_FLAG_KEYS } from './catalog/detection-flags.js';
 import {
   code,
   cutSerialized,
@@ -12,6 +12,7 @@ import {
   signedWeight,
 } from './format.js';
 import { nullableString } from './schema.js';
+import { CurrentMetadataShape, currentMetadata, identificationFlags } from './current-contract.js';
 
 const IpInfoSchema = z.object({
   ip: z.string().describe('Dotted IPv4 address, or "" when none is known'),
@@ -19,8 +20,14 @@ const IpInfoSchema = z.object({
 });
 
 const flagShape = Object.fromEntries(
-  DETECTION_FLAG_KEYS.map((flag) => [flag, z.boolean()]),
-) as Record<(typeof DETECTION_FLAG_KEYS)[number], z.ZodBoolean>;
+  DETECTION_FLAG_KEYS.map((flag) => [
+    flag,
+    z
+      .boolean()
+      .nullable()
+      .describe('null means unavailable in the returned public profile, not a negative result'),
+  ]),
+) as Record<(typeof DETECTION_FLAG_KEYS)[number], z.ZodNullable<z.ZodBoolean>>;
 
 export const RiskBandSchema = z.enum(['trusted', 'suspicious', 'dangerous', 'rate_limited']);
 
@@ -68,6 +75,7 @@ export const IdentificationOutputSchema = z.object({
     }),
   ),
   detection_flags: z.object(flagShape),
+  ...CurrentMetadataShape,
   observed_at: nullableString(
     'When the identification was observed, RFC 3339 UTC with milliseconds',
   ),
@@ -133,6 +141,17 @@ export function toIdentificationOutput(identification: Identification): Identifi
     public_ip: boundStrings(rest.public_ip, 'public_ip.', MAX_VALUE_LENGTH, changes),
     local_ip: boundStrings(rest.local_ip, 'local_ip.', MAX_VALUE_LENGTH, changes),
     traffic_source: boundStrings(rest.traffic_source, 'traffic_source.', MAX_VALUE_LENGTH, changes),
+    request_id: boundValue(
+      identification.request_id ||
+        (typeof identification.raw.identification_id === 'string'
+          ? identification.raw.identification_id
+          : ''),
+      'request_id',
+      MAX_VALUE_LENGTH,
+      changes,
+    ),
+    detection_flags: identificationFlags(identification),
+    ...currentMetadata(identification.raw, changes),
     risk_score: score,
     risk_band: bandOf(score),
     // History rows carry internal score-detail text in `description`; it is not meant to be
@@ -143,9 +162,20 @@ export function toIdentificationOutput(identification: Identification): Identifi
       description: null,
     })),
   };
+  // Metadata adds optional evidence to already bounded legacy rows. Keep one projected row small
+  // enough for get/search/resource responses, even when every upstream display field is oversized.
+  if (JSON.stringify(output).length > 18_000) {
+    for (const [key, value] of Object.entries(output)) {
+      if (typeof value === 'string')
+        Object.assign(output, { [key]: boundValue(value, key, 300, changes) });
+    }
+    output.public_ip = boundStrings(output.public_ip, 'public_ip.', 300, changes);
+    output.local_ip = boundStrings(output.local_ip, 'local_ip.', 300, changes);
+    output.traffic_source = boundStrings(output.traffic_source, 'traffic_source.', 300, changes);
+  }
   if (signals.length < rest.signals.length) changes.truncated.push('signals');
-  if (changes.truncated.length > 0) output.truncated_fields = changes.truncated;
-  if (changes.escaped.length > 0) output.escaped_fields = changes.escaped;
+  if (changes.truncated.length > 0) output.truncated_fields = [...new Set(changes.truncated)];
+  if (changes.escaped.length > 0) output.escaped_fields = [...new Set(changes.escaped)];
   return output;
 }
 
@@ -196,6 +226,29 @@ export function identificationMarkdown(item: IdentificationOutput, heading: stri
     `- Detection flags: ${flags.length === 0 ? 'none' : flags.map((f) => code(f)).join(', ')}`,
   );
 
+  const unknownFlags = CURRENT_DETECTION_FLAG_KEYS.filter(
+    (key) => item.detection_flags[key] === null,
+  );
+  if (unknownFlags.length)
+    lines.push(
+      `- Signals unavailable in this response: ${unknownFlags.map((key) => code(key)).join(', ')}`,
+    );
+  if (item.hre !== undefined)
+    lines.push(
+      `- High-Risk Events (separate from this scan's Risk Score): ${code(JSON.stringify(item.hre), { maxLength: 3_000 })}`,
+    );
+  if (item.client_identity !== undefined)
+    lines.push(
+      `- Client identity (claims are not verified; proof covers only the named attributes): ${code(JSON.stringify(item.client_identity), { maxLength: 6_000 })}`,
+    );
+  for (const key of ['search_bot_owner', 'ai_bot_owner', 'ai_browser_owner'] as const) {
+    if (item[key] !== undefined)
+      lines.push(
+        `- ${key}: ${code(JSON.stringify(item[key]))} (reported label, not a verified identity)`,
+      );
+  }
+  if (item.contract_warnings)
+    for (const warning of item.contract_warnings) lines.push(`- ${warning}`);
   const source = item.traffic_source;
   const traffic: string[] = [];
   if (source.channel !== '') traffic.push(`channel ${code(source.channel)}`);
@@ -210,7 +263,7 @@ export function identificationMarkdown(item: IdentificationOutput, heading: stri
   if (traffic.length > 0) lines.push(`- Traffic source: ${traffic.join('; ')}`);
   if (item.truncated_fields !== undefined) {
     lines.push(
-      `- Shortened by this server (values longer than ${MAX_VALUE_LENGTH.toLocaleString('en-US')} characters, or more than ${MAX_SIGNALS_PER_IDENTIFICATION} risk signals): ${item.truncated_fields.join(', ')}`,
+      `- Shortened by this server (values longer than ${MAX_VALUE_LENGTH.toLocaleString('en-US')} characters, risk signals or bounded metadata arrays): ${item.truncated_fields.join(', ')}`,
     );
   }
   if (item.escaped_fields !== undefined) {

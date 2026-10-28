@@ -123,6 +123,91 @@ export function operationsSuite(host: Host) {
         await client.close();
       }
     });
+    it('forwards signed multiaccount create/patch, preserves omission and reads back true/false', async () => {
+      const backend = operationsBackend();
+      // A separate account token keeps independent tests out of the production-sized rate bucket.
+      const client = await connect(host(backend), `slat_${'C'.repeat(43)}`);
+      try {
+        const invoke = async (name: string, args: Record<string, unknown>) => {
+          const result = await client.callTool({ name, arguments: args });
+          expect(result.isError).toBeFalsy();
+          return result.structuredContent as any;
+        };
+        const tools = (await client.listTools()).tools;
+        for (const name of ['shieldlabs_create_webhook', 'shieldlabs_patch_webhook'])
+          expect(
+            tools.find((t) => t.name === name)!.inputSchema.properties!.multiaccount,
+          ).toMatchObject({ type: 'boolean' });
+        const base = { domain_id: DOMAIN_ID, webhook_id: HOOK_ID };
+        await invoke('shieldlabs_create_webhook', {
+          domain_id: DOMAIN_ID,
+          name: 'HRE',
+          url: 'https://example.com/hook',
+          multiaccount: true,
+        });
+        expect(JSON.parse(backend.calls.at(-1)!.body).multiaccount).toBe(true);
+        expect(JSON.stringify(await invoke('shieldlabs_get_webhook', base))).toContain(
+          '"multiaccount":true',
+        );
+        await invoke('shieldlabs_patch_webhook', { ...base, name: 'Renamed' });
+        expect(JSON.parse(backend.calls.at(-1)!.body)).not.toHaveProperty('multiaccount');
+        expect(JSON.stringify(await invoke('shieldlabs_get_webhook', base))).toContain(
+          '"multiaccount":true',
+        );
+        await invoke('shieldlabs_patch_webhook', { ...base, multiaccount: false });
+        expect(JSON.parse(backend.calls.at(-1)!.body)).toEqual({ multiaccount: false });
+        expect(JSON.stringify(await invoke('shieldlabs_get_webhook', base))).toContain(
+          '"multiaccount":false',
+        );
+        backend.force({ status: 503, body: { code: 'temporarily_unavailable' } });
+        const before = backend.calls.length;
+        const failed = await client.callTool({
+          name: 'shieldlabs_patch_webhook',
+          arguments: { ...base, multiaccount: true },
+        });
+        expect(failed.isError).toBe(true);
+        expect(backend.calls.length - before).toBe(1);
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('carries HRE, nullable identity and current flags through all four hosted investigation tools', async () => {
+      const backend = operationsBackend();
+      backend.setHistoryExtras({
+        is_ai_bot: true,
+        hre: {
+          account_sharing: { status: 'evaluated', reason: 'devices', level: 'medium' },
+          account_takeover: { status: 'not_evaluated', reason: 'no_history', level: null },
+        },
+        client_identity: {
+          availability: 'available',
+          claims: [null, { agent_name: 'Reported Agent' }],
+          verified: [{ subject: 'provider', value_id: 'provider-id' }],
+        },
+      });
+      const client = await connect(host(backend), `slat_${'D'.repeat(43)}`);
+      try {
+        for (const [name, args] of [
+          ['shieldlabs_get_identification', { request_id: REQUEST_ID }],
+          ['shieldlabs_search_history', { type: 'user_hid', value: 'anonymous' }],
+          ['shieldlabs_summarize_entity', { type: 'user_hid', value: 'anonymous' }],
+          ['shieldlabs_explain_risk_score', { request_id: REQUEST_ID }],
+        ] as const) {
+          const result = await client.callTool({
+            name,
+            arguments: { ...args, domain: 'example.com', response_format: 'markdown' },
+          });
+          expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+          expect(JSON.stringify(result.structuredContent)).toContain('Reported Agent');
+          expect(JSON.stringify(result.content)).toContain('Reported Agent');
+          expect(JSON.stringify(result.content)).toContain('not_evaluated');
+        }
+      } finally {
+        await client.close();
+      }
+    });
+
     it('matches webhook name code-point and URL UTF-8 byte boundaries on create and patch', async () => {
       const backend = operationsBackend();
       const client = await connect(host(backend));
