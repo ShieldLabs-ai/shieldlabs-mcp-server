@@ -126,8 +126,31 @@ describe('shieldlabs_explain_risk_score', () => {
         identification: historyPage.data[4],
       }),
     );
-    expect(crawlerText).toContain('No weighted risk signals');
+    expect(crawlerText).toContain('Detailed signal weights are unavailable in this response.');
   });
+
+  it.each([0, 30, 999])(
+    'does not infer zero contributions from missing weights at score %s',
+    async (score) => {
+      connected = await connect({});
+      const identification = {
+        risk_score: score,
+        signals: [],
+        detection_flags: { vpn: true },
+      };
+      const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+        identification,
+      });
+      expect(output.risk_score).toBe(score);
+      expect(output.signals).toEqual([]);
+      const markdown = textOf(
+        await callTool(connected.client, TOOL_NAMES.explainRiskScore, { identification }),
+      );
+      expect(markdown).toContain('Detailed signal weights are unavailable in this response.');
+      expect(markdown).not.toContain('nothing added');
+      expect(output.detection_flags.some((flag: any) => flag.flag === 'vpn')).toBe(true);
+    },
+  );
 
   it('accepts the json output of shieldlabs_get_identification', async () => {
     connected = await connect(FULL_ENV, {

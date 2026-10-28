@@ -227,7 +227,17 @@ describe('the Worker', () => {
         'cf-connecting-ip': address(1),
         authorization: `Bearer slat_${String(index).padStart(43, 'q')}`,
       });
-      for (let index = 0; index < 300; index++) await post(INITIALIZE, from(index));
+      // Bounded parallel batches keep the real 300-request binding check within one window.
+      // Consume each response so completed requests do not retain their bodies in workerd.
+      // Invalid tokens also hit RL_ANON; only the upstream count proves the ping limit.
+      for (let start = 0; start < 300; start += 10) {
+        await Promise.all(
+          Array.from({ length: 10 }, async (_, offset) => {
+            const response = await post(INITIALIZE, from(start + offset));
+            await response.arrayBuffer();
+          }),
+        );
+      }
       expect(upstream).toHaveLength(300);
       const refused = await post(INITIALIZE, from(300));
       expect(refused.status).toBe(429);

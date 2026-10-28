@@ -423,7 +423,7 @@ export function explanationMarkdown(explanation: Explanation): string {
   }
   lines.push('## Weighted risk signals');
   if (explanation.signals.length === 0) {
-    lines.push('No weighted risk signals: nothing added to the Risk Score.');
+    lines.push('Detailed signal weights are unavailable in this response.');
   } else {
     lines.push('| Risk signal | Weight | Meaning |', '|---|---:|---|');
     for (const signal of explanation.signals) {
