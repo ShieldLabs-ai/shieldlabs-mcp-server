@@ -154,7 +154,7 @@ separate from a managed-service deployment or an official client-directory listi
 ### Optional History filters
 
 `shieldlabs_search_history` and `shieldlabs_summarize_entity` accept `from`, `to`,
-`score_from`, `score_to` and the 17 boolean public History row fields. All predicates are
+`score_from`, `score_to` and the 20 boolean public History row fields. All predicates are
 ANDed inside the selected identifier and domain. Omit a field to leave it unconstrained;
 `false` and `0` are real values. This does not add domain-wide enumeration or arbitrary filters.
 
@@ -177,13 +177,9 @@ Examples (retain `domain` for hosted calls when needed):
 {"type":"ip","value":"203.0.113.24","score_from":999,"score_to":999}
 ```
 
-Boolean query names: `is_vpn`, `is_tor`, `is_proxy`, `is_datacenter`, `is_abuser`,
-`is_privacy_relay`, `is_stun_not_checked`, `check_incomplete`, `is_antidetect`,
-`is_os_mismatch`, `is_os_not_detected`, `is_timezone_mismatch`, `is_js_disabled`,
-`is_browser_automation`, `is_incognito`, `is_search_bot`, `is_suspicious_paid_click`.
-For search bots, `check_incomplete`, `is_js_disabled` and `is_incognito` are false,
-matching the public response. These query names differ from normalized detection flag names;
-current flags such as `ai_bot` are not automatically queryable.
+Boolean query names: `is_vpn`, `is_tor`, `is_proxy`, `is_privacy_relay`, `network_check_incomplete`, `check_incomplete`, `is_antidetect`, `is_os_mismatch`, `is_os_not_detected`, `is_timezone_mismatch`, `is_js_disabled`, `is_browser_automation`, `is_incognito`, `is_search_bot`, `ip_mismatch`, `latency_test`, `device_spoofing`, `banned_ip`, `ai_bot`, `ai_browser`.
+For accepted search bots, AI bots and AI browsers, `check_incomplete`, `is_js_disabled`,
+`is_incognito` and `ip_mismatch` are false, matching the public response.
 
 When filters are present, JSON and Markdown report them. `total`, paging and summary statistics
 refer to matching rows. Keep every filter unchanged on later pages. An empty filtered result

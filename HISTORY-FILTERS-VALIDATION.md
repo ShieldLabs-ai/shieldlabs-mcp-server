@@ -14,7 +14,7 @@ Date: 2026-10-28. Status: candidate implementation, not a production deployment.
 
 ## Behavior checked
 
-Search and entity summary expose four optional date/score inputs plus 17 boolean flags.
+Search and entity summary expose four optional date/score inputs plus 20 boolean flags.
 Every predicate is AND-only inside one identifier and site. No filters preserves the previous
 request and response shape. With filters, both response formats report the constraints.
 

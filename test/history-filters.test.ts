@@ -206,7 +206,10 @@ describe('History filters through local MCP and SDK HTTP transport', () => {
     { score_from: 2, score_to: 1 },
     { is_vpn: 'false' },
     { is_proxy: null },
-    { is_ai_bot: true },
+    { is_abuser: true },
+    { is_stun_not_checked: true },
+    { is_datacenter: false },
+    { is_suspicious_paid_click: false },
     { country: 'DE' },
   ])('rejects invalid/unsupported input before an HTTP call: %j', async (filters) => {
     const b = backend([]);

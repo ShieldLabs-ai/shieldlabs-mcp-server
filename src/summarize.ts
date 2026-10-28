@@ -1,7 +1,7 @@
 import { NIL_UUID, type RiskBand } from '@shieldlabs-ai/node';
 import { z } from 'zod';
 import { bandOf, worseBand } from './catalog/bands.js';
-import { DETECTION_FLAG_KEYS } from './catalog/detection-flags.js';
+import { CURRENT_DETECTION_FLAG_KEYS } from './catalog/detection-flags.js';
 import { NON_ACCOUNT_USER_HIDS } from './constants.js';
 import { cutSerialized, round1 } from './format.js';
 import type { IdentificationOutput } from './identification.js';
@@ -216,7 +216,7 @@ export function summarize(items: readonly IdentificationOutput[]): Summary {
     if (item.public_ip.ip !== '') ips.add(item.public_ip.ip);
     if (item.connection_type !== '') connectionTypes.add(item.connection_type);
 
-    for (const flag of DETECTION_FLAG_KEYS) {
+    for (const flag of CURRENT_DETECTION_FLAG_KEYS) {
       if (item.detection_flags[flag] === true) flags.add(flag);
       if (item.detection_flags[flag] === null) missingFlags.add(flag);
     }

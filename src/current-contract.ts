@@ -27,7 +27,7 @@ export function currentFlags(
     ip_mismatch: ['is_ip_mismatch'],
     latency_test: ['is_latency_test', 'is_ws_tcp_latency', 'ws_tcp_latency'],
     anti_detect_browser: ['is_antidetect'],
-    device_spoofing: ['is_device_spoof', 'is_device_spoofing', 'is_os_mismatch2'],
+    device_spoofing: ['is_device_spoof', 'is_device_spoofing'],
     banned_ip: ['is_rate_limited', 'is_banned_ip', 'rate_limited'],
     incognito: ['is_incognito'],
     search_bot: ['is_search_bot'],
@@ -45,7 +45,9 @@ export function currentFlags(
     }),
   ) as Record<CurrentDetectionFlagKey, boolean | null>;
   // These are documented derivations for the legacy History shape, not negative defaults.
-  if (history && raw.connection_type === 'browser_vpn_proxy') result.vpn = result.proxy = true;
+  if (history && (raw.connection_type === 'browser_vpn_proxy' || raw.is_browser_vpn_proxy === true))
+    result.vpn = true;
+  if (history && raw.is_os_mismatch2 === true) result.os_mismatch = true;
   if (result.banned_ip === null && (raw.score === 999 || raw.risk_score === 999))
     result.banned_ip = true;
   return result;
@@ -54,11 +56,32 @@ export function currentFlags(
 export function identificationFlags(item: Identification) {
   const flags = currentFlags(item.raw);
   if (flags.ip_mismatch === null && item.source === 'history') {
-    if ((item.public_ip.ip !== '' && item.local_ip.ip !== '') || item.detection_flags.search_bot) {
-      flags.ip_mismatch = item.detection_flags.ip_mismatch;
+    if (
+      flags.search_bot === true ||
+      flags.ai_bot === true ||
+      flags.ai_browser === true ||
+      flags.vpn === true ||
+      item.connection_type === 'vpn'
+    )
+      flags.ip_mismatch = false;
+    else {
+      const row = item.raw;
+      const leak =
+        typeof row.webrtc_leak_source === 'string' &&
+        row.webrtc_leak_source.trim() !== '' &&
+        row.webrtc_leak_source.trim() !== 'none';
+      const localCountry = leak ? row.webrtc_leak_country : row.web_rtc_country;
+      const localIp = leak ? row.webrtc_leak_ip : row.web_rtc_ip;
+      if (
+        [row.ip, localIp, row.country, localCountry].every(
+          (v) => typeof v === 'string' && v.trim() !== '' && v !== '0.0.0.0',
+        )
+      )
+        flags.ip_mismatch =
+          String(row.country).trim().toLowerCase() !== String(localCountry).trim().toLowerCase();
     }
   }
-  return { ...item.detection_flags, ...flags };
+  return flags;
 }
 
 function own(value: Record<string, unknown>, key: string): unknown {

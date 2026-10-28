@@ -6,10 +6,8 @@ export const HISTORY_FLAG_PARAMS = [
   'is_vpn',
   'is_tor',
   'is_proxy',
-  'is_datacenter',
-  'is_abuser',
   'is_privacy_relay',
-  'is_stun_not_checked',
+  'network_check_incomplete',
   'check_incomplete',
   'is_antidetect',
   'is_os_mismatch',
@@ -19,7 +17,12 @@ export const HISTORY_FLAG_PARAMS = [
   'is_browser_automation',
   'is_incognito',
   'is_search_bot',
-  'is_suspicious_paid_click',
+  'ip_mismatch',
+  'latency_test',
+  'device_spoofing',
+  'banned_ip',
+  'ai_bot',
+  'ai_browser',
 ] as const;
 
 function validDate(value: string): boolean {

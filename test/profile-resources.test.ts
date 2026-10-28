@@ -1,3 +1,4 @@
+import { CURRENT_DETECTION_FLAG_KEYS } from '../src/catalog/detection-flags.js';
 import type { FetchLike, FetchRequestInit } from '@shieldlabs-ai/node';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -308,7 +309,7 @@ describe('resources', () => {
       ).text,
     );
     expect(signals.risk_signals.map((s: any) => s.slug)).toContain('antidetect_browser');
-    expect(signals.detection_flags).toHaveLength(26);
+    expect(signals.detection_flags).toHaveLength(20);
     expect(signals.connection_types).toHaveLength(8);
     expect(signals.notes.join(' ')).toContain('can change');
     const bands = JSON.parse(
@@ -399,7 +400,9 @@ describe('JSON Schemas', () => {
                 : legacy.risk_score >= 30
                   ? 'suspicious'
                   : 'trusted',
-          detection_flags: flags,
+          detection_flags: Object.fromEntries(
+            CURRENT_DETECTION_FLAG_KEYS.map((key) => [key, flags[key] ?? null]),
+          ),
           signals: legacy.signals.map((s: any) => ({ ...s, description: null })),
         }),
         JSON.stringify(validate.errors),

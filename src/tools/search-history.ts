@@ -179,7 +179,7 @@ export function registerSearchHistory(server: McpServer, ctx: ServerContext): vo
     TOOL_NAMES.searchHistory,
     {
       title: 'Search history',
-      description: `List identifications for one identifier from the ShieldLabs History API, newest first, with paging. Optional date, raw-score and 17 boolean History filters are ANDed within that identifier and domain. Omit a filter to leave it unconstrained. For dangerous Risk Score use score_from=60 and score_to=100; 999 is a separate rate-limit marker. Totals are filtered. Keep all filters unchanged when paging.
+      description: `List identifications for one identifier from the ShieldLabs History API, newest first, with paging. Optional date, raw-score and 20 boolean History filters are ANDed within that identifier and domain. Omit a filter to leave it unconstrained. For dangerous Risk Score use score_from=60 and score_to=100; 999 is a separate rate-limit marker. Totals are filtered. Keep all filters unchanged when paging.
 
 Use it to see individual identifications of an account (user_hid), a device (device_id), a browser visitor (visitor_id), a cookie (cookie_id), a visit (session_id) or an IPv4 address (ip). For counts and aggregates over many identifications, prefer shieldlabs_summarize_entity.
 

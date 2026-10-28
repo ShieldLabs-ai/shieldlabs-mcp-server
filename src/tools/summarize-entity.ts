@@ -229,7 +229,7 @@ export function registerSummarizeEntity(server: McpServer, ctx: ServerContext): 
 
 The result is computed by this server from the returned history window (the most recent max_items identifications), and labelled as such: it is not a ShieldLabs verdict. It counts distinct devices, accounts, visitors, countries, IPs and connection types (with the top values), the highest and average Risk Score, band counts, rate-limit markers, detection flags and risk signals seen with counts, and the first and last observed time.
 
-Use it for questions such as: how many accounts used this device, how many devices this account used, which countries an account came from, whether an IP sent automated traffic. Use shieldlabs_search_history to see the individual identifications. Optional date, raw-score and 17 boolean History filters are ANDed within this identifier and domain, on every page. Totals and aggregates cover only matching rows. Omit filters for the previous behavior; for dangerous use score_from=60 and score_to=100 to exclude marker 999.
+Use it for questions such as: how many accounts used this device, how many devices this account used, which countries an account came from, whether an IP sent automated traffic. Use shieldlabs_search_history to see the individual identifications. Optional date, raw-score and 20 boolean History filters are ANDed within this identifier and domain, on every page. Totals and aggregates cover only matching rows. Omit filters for the previous behavior; for dangerous use score_from=60 and score_to=100 to exclude marker 999.
 
 Args:
   - type ('user_hid' | 'device_id' | 'visitor_id' | 'ip' | 'cookie_id')
