@@ -86,6 +86,53 @@ export const SummarySchema = z.object({
     .describe(
       `Risk signal names seen, with how many identifications carried each: at most ${MAX_SIGNALS_SEEN}, most frequent first`,
     ),
+  high_risk_events: z
+    .object({
+      snapshots_reported: z.number().int(),
+      outcomes: z.array(
+        z.object({
+          kind: z.string(),
+          status: z.string(),
+          level: z.string().nullable(),
+          count: z.number().int(),
+        }),
+      ),
+    })
+    .optional()
+    .describe(
+      'Counts of backend HRE snapshots present in this history window; not recomputed verdicts or group notifications',
+    ),
+  client_identity: z
+    .object({
+      reported: z.number().int(),
+      unavailable: z.number().int(),
+      claims: z.array(
+        z.object({
+          provider_name: z.string().nullable(),
+          agent_name: z.string().nullable(),
+          count: z.number().int(),
+        }),
+      ),
+      verified: z.array(
+        z.object({
+          subject: z.string().nullable(),
+          value_id: z.string().nullable(),
+          count: z.number().int(),
+        }),
+      ),
+    })
+    .optional()
+    .describe(
+      'Claimed names and verified attributes are counted separately; unavailable does not mean human',
+    ),
+  metadata_incomplete: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      'Snapshots with metadata warnings; displayed counts can be partial and are not authorization proof',
+    ),
+  flags_unavailable: z.array(z.object({ flag: z.string(), count: z.number().int() })).optional(),
   distinct_signals: z
     .number()
     .int()
@@ -136,6 +183,13 @@ export function summarize(items: readonly IdentificationOutput[]): Summary {
   const connectionTypes = new Counter();
   const flags = new Counter();
   const signals = new Counter();
+  const missingFlags = new Counter();
+  let hreSnapshots = 0;
+  const hreOutcomes = new Counter();
+  let identities = 0;
+  let identityUnavailable = 0;
+  const identityClaims = new Counter();
+  const identityVerified = new Counter();
   const bandCounts = { trusted: 0, suspicious: 0, dangerous: 0 };
 
   let anonymous = 0;
@@ -163,10 +217,36 @@ export function summarize(items: readonly IdentificationOutput[]): Summary {
     if (item.connection_type !== '') connectionTypes.add(item.connection_type);
 
     for (const flag of DETECTION_FLAG_KEYS) {
-      if (item.detection_flags[flag]) flags.add(flag);
+      if (item.detection_flags[flag] === true) flags.add(flag);
+      if (item.detection_flags[flag] === null) missingFlags.add(flag);
     }
     for (const name of new Set(item.signals.map((signal) => signal.name))) signals.add(name);
 
+    if (item.hre !== undefined && item.hre !== null) {
+      hreSnapshots++;
+      for (const kind of ['account_sharing', 'account_takeover', 'impossible_travel'] as const) {
+        const outcome = item.hre[kind];
+        if (outcome) hreOutcomes.add(JSON.stringify([kind, outcome.status, outcome.level]));
+      }
+    }
+    if (item.client_identity !== undefined) {
+      identities++;
+      const identity = item.client_identity;
+      if (identity === null || identity.availability !== 'available') identityUnavailable++;
+      // A repeated name/evidence in one snapshot counts only once per identification.
+      for (const value of new Set(
+        (identity?.claims ?? [])
+          .filter((c) => c != null && (c.provider_name || c.agent_name))
+          .map((c) => JSON.stringify([c?.provider_name ?? null, c?.agent_name ?? null])),
+      ))
+        identityClaims.add(value);
+      for (const value of new Set(
+        (identity?.verified ?? [])
+          .filter((v) => v?.subject && v.value_id)
+          .map((v) => JSON.stringify([v?.subject ?? null, v?.value_id ?? null])),
+      ))
+        identityVerified.add(value);
+    }
     const band = bandOf(item.risk_score);
     if (band === 'rate_limited') {
       rateLimitMarkers++;
@@ -187,7 +267,9 @@ export function summarize(items: readonly IdentificationOutput[]): Summary {
     }
   }
 
+  const partial = items.filter((item) => (item.contract_warnings?.length ?? 0) > 0).length;
   return {
+    ...(partial ? { metadata_incomplete: partial } : {}),
     identifications_analyzed: items.length,
     first_observed_at: first === null ? null : new Date(first).toISOString(),
     last_observed_at: last === null ? null : new Date(last).toISOString(),
@@ -216,6 +298,48 @@ export function summarize(items: readonly IdentificationOutput[]): Summary {
       .map(([name, count]) => ({ name, count }))
       .sort(byCountThenName((item) => item.name))
       .slice(0, MAX_SIGNALS_SEEN),
+    ...(hreSnapshots
+      ? {
+          high_risk_events: {
+            snapshots_reported: hreSnapshots,
+            outcomes: hreOutcomes
+              .entries()
+              .slice(0, 30)
+              .map(([value, count]) => {
+                const [kind, status, level] = JSON.parse(value) as [string, string, string | null];
+                return { kind, status, level, count };
+              }),
+          },
+        }
+      : {}),
+    ...(identities
+      ? {
+          client_identity: {
+            reported: identities,
+            unavailable: identityUnavailable,
+            claims: identityClaims
+              .entries()
+              .slice(0, TOP_VALUES)
+              .map(([value, count]) => {
+                const [provider_name, agent_name] = JSON.parse(value) as [
+                  string | null,
+                  string | null,
+                ];
+                return { provider_name, agent_name, count };
+              }),
+            verified: identityVerified
+              .entries()
+              .slice(0, TOP_VALUES)
+              .map(([value, count]) => {
+                const [subject, value_id] = JSON.parse(value) as [string | null, string | null];
+                return { subject, value_id, count };
+              }),
+          },
+        }
+      : {}),
+    ...(missingFlags.entries().length
+      ? { flags_unavailable: missingFlags.entries().map(([flag, count]) => ({ flag, count })) }
+      : {}),
     distinct_signals: signals.entries().length,
   };
 }

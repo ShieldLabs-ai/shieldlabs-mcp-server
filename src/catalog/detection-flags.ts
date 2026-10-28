@@ -1,6 +1,29 @@
 import type { DetectionFlags } from '@shieldlabs-ai/node';
 
-export type DetectionFlagKey = keyof DetectionFlags;
+export const CURRENT_DETECTION_FLAG_KEYS = [
+  'vpn',
+  'proxy',
+  'private_relay',
+  'tor',
+  'check_incomplete',
+  'network_check_incomplete',
+  'os_not_detected',
+  'timezone_mismatch',
+  'javascript_disabled',
+  'os_mismatch',
+  'ip_mismatch',
+  'latency_test',
+  'anti_detect_browser',
+  'device_spoofing',
+  'banned_ip',
+  'incognito',
+  'search_bot',
+  'ai_bot',
+  'browser_automation',
+  'ai_browser',
+] as const;
+export type CurrentDetectionFlagKey = (typeof CURRENT_DETECTION_FLAG_KEYS)[number];
+export type DetectionFlagKey = keyof DetectionFlags | CurrentDetectionFlagKey;
 
 /** Plain-language description of one detection flag. */
 export interface DetectionFlagInfo {
@@ -11,8 +34,51 @@ export interface DetectionFlagInfo {
   meaning: string;
 }
 
-/** The 19 detection flags, in wire order. */
+/** Current signals plus legacy names retained for existing MCP consumers. */
 export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
+  {
+    flag: 'private_relay',
+    label: 'Private Relay',
+    scored: true,
+    meaning: 'Privacy relay evidence; privacy_relay is the legacy name.',
+  },
+  {
+    flag: 'network_check_incomplete',
+    label: 'Network Check Incomplete',
+    scored: true,
+    meaning: 'The network check did not complete; missing evidence is not a negative detection.',
+  },
+  {
+    flag: 'latency_test',
+    label: 'Latency Test',
+    scored: false,
+    meaning: 'Latency-test evidence reported by the backend; do not invent a threshold.',
+  },
+  {
+    flag: 'device_spoofing',
+    label: 'Device Spoofing',
+    scored: true,
+    meaning: 'The backend reported device-spoofing evidence.',
+  },
+  {
+    flag: 'banned_ip',
+    label: 'Banned IP',
+    scored: false,
+    meaning: 'A banned or rate-limited IP; 999 remains a marker rather than a Risk Score.',
+  },
+  {
+    flag: 'ai_bot',
+    label: 'AI Bot',
+    scored: false,
+    meaning: 'AI-bot classification; it does not prove a provider or agent identity.',
+  },
+  {
+    flag: 'ai_browser',
+    label: 'AI Browser',
+    scored: false,
+    meaning:
+      'AI-browser classification; claimed names and verified attributes are separate evidence.',
+  },
   { flag: 'vpn', label: 'VPN', scored: true, meaning: 'A VPN was detected on the connection.' },
   {
     flag: 'privacy_relay',

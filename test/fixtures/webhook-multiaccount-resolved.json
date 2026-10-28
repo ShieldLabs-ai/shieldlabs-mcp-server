@@ -1,0 +1,43 @@
+{
+  "event_id": "1f12f427edb3e4b74df2c0c958db49186ef0a7b9",
+  "site_id": 319,
+  "event_type": "hre.multi_account.changed",
+  "schema_version": "2026-10-07",
+  "created_at": "2026-10-07T12:01:04Z",
+  "data": {
+    "kind": "multi_account",
+    "domain": "example.com",
+    "action": "resolved",
+    "status": "evaluated",
+    "detected": false,
+    "level": null,
+    "cluster_id": "abc35eb1-2cd7-5c28-a805-f3b7c1682a2f",
+    "revision": "7415",
+    "previous_revision": "7412",
+    "added_user_hids": [],
+    "removed_user_hids": [
+      "account_a",
+      "account_b",
+      "account_c"
+    ],
+    "user_hids": [
+      "account_a",
+      "account_b",
+      "account_c"
+    ],
+    "users_count": 3,
+    "members_complete": true,
+    "evaluated_at": "2026-10-07T12:01:00Z",
+    "rules_version": "fp21-travel-pair-2026-10-06",
+    "source": {
+      "publication_epoch": "multiaccount-v1",
+      "publication_version": "7415",
+      "coverage_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "evidence_summary": {
+      "basis_types": [],
+      "rules": [],
+      "detail_truncated": false
+    }
+  }
+}

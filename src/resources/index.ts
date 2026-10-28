@@ -123,7 +123,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     {
       title: 'Risk signals catalog',
       description:
-        'Plain-language meaning of every known risk signal slug, the 19 detection flags and the connection types. Weights can change and unknown slugs are possible.',
+        'Plain-language meaning of every known risk signal slug, 20 current detection flags and six legacy compatibility keys and the connection types. Weights can change and unknown slugs are possible.',
       mimeType: 'application/json',
     },
     (uri) => jsonContents(uri.href, RISK_SIGNALS_REFERENCE),

@@ -72,6 +72,7 @@ export function operationsBackend() {
   const revoked = new Set<string>();
   let forced: { status: number; body: unknown; headers?: Record<string, string> } | undefined;
   let multiple = false;
+  let historyExtras: Record<string, unknown> = {};
   const failures: number[] = [];
   const domain = (token: string, secret = false) => ({
     id: DOMAIN_ID,
@@ -83,8 +84,10 @@ export function operationsBackend() {
     server_key: secret ? RAW_KEY : '********',
     created_at: '2026-10-02T12:00:00Z',
   });
+  let subscription = false;
   const hook = (secret = false) => ({
     id: HOOK_ID,
+    multiaccount: subscription,
     name: 'Production',
     url: 'https://example.com/hook',
     enabled: true,
@@ -128,6 +131,13 @@ export function operationsBackend() {
         status: url.pathname === '/mcp/v1/domains' ? 201 : 200,
       });
     if (url.pathname === DOMAIN_PATH) return Response.json(domain(token));
+    if (
+      (url.pathname === `${DOMAIN_PATH}/webhooks` && init.method === 'POST') ||
+      (url.pathname === HOOK_PATH && init.method === 'PATCH')
+    ) {
+      const body = JSON.parse(init.body ?? '{}');
+      if (typeof body.multiaccount === 'boolean') subscription = body.multiaccount;
+    }
     if (url.pathname === `${DOMAIN_PATH}/webhooks`)
       return Response.json(init.method === 'GET' ? { webhooks: [hook()] } : hook(true), {
         status: init.method === 'GET' ? 200 : 201,
@@ -155,7 +165,12 @@ export function operationsBackend() {
         );
       const limit = Number(url.searchParams.get('limit'));
       const offset = Number(url.searchParams.get('offset'));
-      const rows = history.data.map((row) => ({ ...row, request_id: REQUEST_ID, domain: owned }));
+      const rows = history.data.map((row) => ({
+        ...row,
+        ...historyExtras,
+        request_id: REQUEST_ID,
+        domain: owned,
+      }));
       return Response.json({ data: rows.slice(offset, offset + limit), total: rows.length });
     }
     return Response.json({ code: 'not_found' }, { status: 404 });
@@ -167,6 +182,9 @@ export function operationsBackend() {
     revoked,
     failNext: (status: number) => {
       failures.push(status);
+    },
+    setHistoryExtras: (value: Record<string, unknown>) => {
+      historyExtras = value;
     },
     setMultiple: (value: boolean) => {
       multiple = value;

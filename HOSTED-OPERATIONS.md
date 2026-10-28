@@ -175,3 +175,21 @@ Hosted mode uses `SHIELDLABS_PUBLIC_ORIGIN`, `SHIELDLABS_AUTH_ISSUER`,
 The gateway credential authenticates this service to its account backend and is not an
 end-user API key. Configure your own compatible backend or use the managed OAuth endpoint.
 Never copy a production key into a client configuration or a published example.
+
+## Current contract coverage
+
+The 2026-10-28 candidate preserves the public 21-tool surface. Webhook create/patch accept
+optional `multiaccount`; omitted create defaults false and omitted patch preserves state.
+Subscription-only updates do not require a new URL or reset verification. Read back the
+subscription and report backend release-profile unavailability. Never automatically retry writes.
+
+Identification outputs adapt wire `identification_id` to MCP `request_id`, expose 20 current
+flags with null for unavailable values, and retain six legacy compatibility keys. Optional
+`hre`, `client_identity` and owner labels are allowlisted/bounded. Unknown public strings are
+kept; malformed metadata is unavailable with a warning. Claims and verified subjects remain
+separate; missing identity never proves human and provider proof never proves an agent.
+
+HRE snapshots in summaries describe only returned rows, independently of Risk Score. They
+are not recomputed detector verdicts or the separate multi-account group feed. Resources serve
+the public wire schema pinned to shieldlabs-openapi 3fc61efd and derive the MCP output schema
+from the same runtime Zod model. New output fields are optional; review null handling in clients.

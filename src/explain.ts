@@ -15,6 +15,13 @@ import {
 } from './format.js';
 import { RiskBandSchema } from './identification.js';
 import { nullableString } from './schema.js';
+import {
+  CurrentMetadataShape,
+  currentFlags,
+  currentMetadata,
+  identificationFlags,
+  type CurrentMetadata,
+} from './current-contract.js';
 
 /** At most this many signals are explained; longer lists only come from unusual input. */
 const MAX_SIGNALS = 60;
@@ -66,18 +73,20 @@ export interface ExplainInput {
   device_id: string | null;
   risk_score: number;
   signals: { name: string; weight: number }[];
-  flags: Partial<Record<(typeof DETECTION_FLAG_KEYS)[number], boolean>>;
+  flags: Partial<Record<(typeof DETECTION_FLAG_KEYS)[number], boolean | null>>;
   connection_type: string | null;
   source: 'history' | 'webhook' | 'input';
+  metadata?: CurrentMetadata;
 }
 
 export function fromIdentification(identification: Identification): ExplainInput {
   return {
-    request_id: identification.request_id,
+    request_id: identification.request_id || optionalString(identification.raw.identification_id),
     device_id: identification.device_id,
     risk_score: identification.risk_score,
     signals: identification.signals.map((s) => ({ name: s.name, weight: s.weight })),
-    flags: identification.detection_flags,
+    flags: identificationFlags(identification),
+    metadata: currentMetadata(identification.raw, { truncated: [], escaped: [] }),
     connection_type: identification.connection_type,
     source: identification.source,
   };
@@ -143,11 +152,12 @@ function fromNormalizedObject(obj: JsonObject, source: ExplainInput['source']): 
     DETECTION_FLAG_KEYS.map((flag) => [flag, rawFlags[flag] === true]),
   );
   return {
-    request_id: optionalString(obj.request_id),
+    request_id: optionalString(obj.request_id) ?? optionalString(obj.identification_id),
     device_id: optionalString(obj.device_id),
     risk_score: score,
     signals,
-    flags,
+    flags: { ...flags, ...currentFlags(obj) },
+    metadata: currentMetadata(obj, { truncated: [], escaped: [] }),
     connection_type: optionalString(obj.connection_type),
     source,
   };
@@ -213,6 +223,7 @@ export const ExplanationSchema = z.object({
   request_id: nullableString('Request ID of the explained identification, when known'),
   risk_score: z.number().int(),
   risk_band: RiskBandSchema,
+  ...CurrentMetadataShape,
   band_range: z.string(),
   band_meaning: z.string(),
   signals: z.array(
@@ -296,9 +307,14 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
   });
 
   const notes: string[] = [];
+  const unknownFlags = DETECTION_FLAG_KEYS.filter((flag) => input.flags[flag] === null);
+  if (unknownFlags.length)
+    notes.push(
+      `Signals unavailable in this response (not negative detections): ${unknownFlags.join(', ')}.`,
+    );
   if (band === 'rate_limited') {
     notes.push(
-      'Skip the rate_limited entry when you log or count risk signals: it only marks the ban.',
+      'The 999 marker is not a Risk Score. Its signal can be banned_ip in the current contract or rate_limited in an older profile; it only marks the ban.',
     );
   }
   if (input.flags.search_bot === true) {
@@ -363,6 +379,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
       band === 'rate_limited'
         ? RATE_LIMIT_MARKER_NOTE
         : `${bandInfo(band).meaning} Typical handling: ${lowerFirst(bandInfo(band).typical_handling)}`,
+    ...input.metadata,
     signals,
     detection_flags: flags,
     connection_type: connection,
@@ -431,6 +448,23 @@ export function explanationMarkdown(explanation: Explanation): string {
       `${code(explanation.connection_type.value)}: ${explanation.connection_type.meaning}`,
     );
   }
+  if (explanation.hre != null)
+    lines.push(
+      '',
+      '## High-Risk Events (separate from Risk Score)',
+      code(JSON.stringify(explanation.hre)),
+    );
+  if (explanation.client_identity != null)
+    lines.push(
+      '',
+      '## Client identity',
+      'Claimed names are unverified. Proof applies only to the stated subject; a provider does not prove an agent or service.',
+      code(JSON.stringify(explanation.client_identity)),
+    );
+  for (const owner of ['search_bot_owner', 'ai_bot_owner', 'ai_browser_owner'] as const)
+    if (explanation[owner] != null)
+      lines.push(`- ${owner}: ${code(explanation[owner])} (reported label, not proof)`);
+  for (const warning of explanation.contract_warnings ?? []) lines.push(`- ${warning}`);
   lines.push('', '## Notes', ...explanation.notes.map((note) => `- ${note}`));
   return lines.join('\n');
 }

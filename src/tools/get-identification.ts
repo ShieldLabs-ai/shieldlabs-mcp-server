@@ -48,7 +48,7 @@ export function registerGetIdentification(server: McpServer, ctx: ServerContext)
     TOOL_NAMES.getIdentification,
     {
       title: 'Get identification',
-      description: `Read the verdict of one identification by its request ID from the ShieldLabs History API: Risk Score and band, weighted risk signals, the 19 detection flags, visitor, device, cookie and session IDs, User HID, public and local IP with country, connection type, OS, browser and traffic source.
+      description: `Read the verdict of one identification by its request ID from the ShieldLabs History API: Risk Score and band, weighted risk signals, 20 current detection flags plus legacy compatibility keys, with null for unavailable values and optional backend HRE/client identity, visitor, device, cookie and session IDs, User HID, public and local IP with country, connection type, OS, browser and traffic source.
 
 Use it when you have the request ID of a protected action (signup, login, payment) and need its verdict. The browser only ever sees the request ID; the verdict is read here, server-side.
 

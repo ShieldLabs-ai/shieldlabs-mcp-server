@@ -1,3 +1,4 @@
+import { BUILT_IN_SETUP_GUIDE } from '../prompts/setup-guide.js';
 import { ResourceTemplate, type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpError, ErrorCode, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
@@ -138,6 +139,12 @@ const WebhookOutput = z.object({
   url: z.string(),
   secret: z.string(),
   enabled: z.boolean(),
+  multiaccount: z
+    .boolean()
+    .optional()
+    .describe(
+      'Whether multi-account group-change notifications are subscribed; omission means the backend profile did not report it',
+    ),
   status: z.enum(['pending', 'active', 'failing', 'verification_failed', 'disabled']),
   created_at: z.string(),
   updated_at: z.string(),
@@ -360,30 +367,37 @@ function definitions(): Definition[] {
     {
       name: 'shieldlabs_create_webhook',
       description:
-        'Create a new multi-endpoint webhook with name and public HTTPS URL. Secret is masked by default.',
+        'Create a webhook with name and public HTTPS URL. Optional multiaccount enables opt-in group-change notifications when the backend release supports them; omitted defaults to false. Secret is masked by default.',
       schema: z
-        .object({ ...domainFields, name: Name, url: HookUrl, include_secret: IncludeSecret })
+        .object({
+          ...domainFields,
+          name: Name,
+          url: HookUrl,
+          multiaccount: z.boolean().optional(),
+          include_secret: IncludeSecret,
+        })
         .strict(),
       method: 'POST',
       path: hooksPath,
-      fields: ['name', 'url'],
+      fields: ['name', 'url', 'multiaccount'],
       secret: true,
     },
     {
       name: 'shieldlabs_patch_webhook',
       description:
-        'Update webhook name and/or URL; omitted fields are preserved. URL changes require confirm=true, reset verification and may disrupt delivery.',
+        'Update webhook name, URL and/or multiaccount subscription; omitted fields are preserved. A subscription-only patch preserves endpoint verification and does not replay history or cancel captured jobs. URL changes require confirm=true, reset verification and may disrupt delivery.',
       schema: z
         .object({
           ...hookFields,
           name: Name.optional(),
           url: HookUrl.optional(),
+          multiaccount: z.boolean().optional(),
           confirm: Confirm.optional(),
         })
         .strict(),
       method: 'PATCH',
       path: hookPath,
-      fields: ['name', 'url'],
+      fields: ['name', 'url', 'multiaccount'],
       destructive: true,
       idempotent: true,
     },
@@ -934,7 +948,9 @@ export function registerOperations(server: McpServer, client: OperationsClient):
           role: 'user',
           content: {
             type: 'text',
-            text: 'List domains with shieldlabs_list_domains, then get the chosen domain by domain_id. If absent, add it with shieldlabs_add_domain. Only the installer may opt into include_secret=true and store server_key in private server environment configuration. Never echo secrets or put them in a browser bundle. Do not rotate an existing key without explicit user confirmation. Install browser identification with the public_key, read server verdicts, then create a webhook on a public HTTPS endpoint, verify and test delivery. Record only IDs and masked configuration. Client transcripts may retain opted-in credentials.',
+            text:
+              BUILT_IN_SETUP_GUIDE +
+              '\n\nHosted configuration: List domains with shieldlabs_list_domains and get the selected domain_id. Reuse configured keys; only an installer may opt into include_secret=true for a needed server credential. Store it privately; never echo it. Client transcripts may retain opted-in credentials. Selected mutations use only the public MCP contour; do not automatically retry writes or rotate existing credentials.',
           },
         },
       ],

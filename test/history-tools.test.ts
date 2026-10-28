@@ -75,6 +75,21 @@ describe('shieldlabs_get_identification', () => {
       // Internal score-detail descriptions are never returned by this server.
       const expected = {
         ...testCase.expected,
+        detection_flags: {
+          ...testCase.expected.detection_flags,
+          ip_mismatch:
+            (testCase.expected.public_ip.ip && testCase.expected.local_ip.ip) ||
+            testCase.expected.detection_flags.search_bot
+              ? testCase.expected.detection_flags.ip_mismatch
+              : null,
+          private_relay: testCase.expected.detection_flags.privacy_relay,
+          network_check_incomplete: testCase.expected.detection_flags.stun_not_checked,
+          latency_test: null,
+          device_spoofing: null,
+          banned_ip: testCase.expected.risk_score === 999 ? true : null,
+          ai_bot: null,
+          ai_browser: null,
+        },
         signals: testCase.expected.signals.map((signal: any) => ({ ...signal, description: null })),
       };
       expect(identification).toEqual(expected);

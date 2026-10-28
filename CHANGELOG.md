@@ -6,6 +6,12 @@ All notable changes to this package are documented here. The format follows
 
 ## [1.1.0] - 2026-10-28
 
+- Cover the current twenty public flags without inventing false values for missing fields;
+  retain legacy compatibility keys, current identification IDs, bounded HRE and scoped identity.
+- Add multiaccount webhook creation/patch/read support through the signed public API only.
+- Refresh executable output/wire schemas, guided progress/resume and optional HRE workflows;
+  cover nullable metadata, both renderings, receiver scope, mutation retries and response limits.
+
 ### Added
 
 - Managed OAuth MCP with **21 tools** for connection checks, domains, webhooks and risk
