@@ -36,7 +36,8 @@ describe('current public contract projection', () => {
   it('accepts legacy aliases, History fields and the 999 marker', () => {
     expect(currentFlags({ is_ai_bot: true, is_os_mismatch2: true, score: 999 })).toMatchObject({
       ai_bot: true,
-      device_spoofing: true,
+      device_spoofing: null,
+      os_mismatch: true,
       banned_ip: true,
     });
     expect(

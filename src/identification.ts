@@ -1,7 +1,7 @@
 import { NIL_UUID, type Identification } from '@shieldlabs-ai/node';
 import { z } from 'zod';
 import { bandOf } from './catalog/bands.js';
-import { CURRENT_DETECTION_FLAG_KEYS, DETECTION_FLAG_KEYS } from './catalog/detection-flags.js';
+import { CURRENT_DETECTION_FLAG_KEYS } from './catalog/detection-flags.js';
 import {
   code,
   cutSerialized,
@@ -20,14 +20,14 @@ const IpInfoSchema = z.object({
 });
 
 const flagShape = Object.fromEntries(
-  DETECTION_FLAG_KEYS.map((flag) => [
+  CURRENT_DETECTION_FLAG_KEYS.map((flag) => [
     flag,
     z
       .boolean()
       .nullable()
       .describe('null means unavailable in the returned public profile, not a negative result'),
   ]),
-) as Record<(typeof DETECTION_FLAG_KEYS)[number], z.ZodNullable<z.ZodBoolean>>;
+) as Record<(typeof CURRENT_DETECTION_FLAG_KEYS)[number], z.ZodNullable<z.ZodBoolean>>;
 
 export const RiskBandSchema = z.enum(['trusted', 'suspicious', 'dangerous', 'rate_limited']);
 
@@ -221,7 +221,7 @@ export function identificationMarkdown(item: IdentificationOutput, heading: stri
         : item.signals.map((s) => `${code(s.name)} ${signedWeight(s.weight)}`).join(', ')
     }`,
   );
-  const flags = DETECTION_FLAG_KEYS.filter((flag) => item.detection_flags[flag]);
+  const flags = CURRENT_DETECTION_FLAG_KEYS.filter((flag) => item.detection_flags[flag]);
   lines.push(
     `- Detection flags: ${flags.length === 0 ? 'none' : flags.map((f) => code(f)).join(', ')}`,
   );

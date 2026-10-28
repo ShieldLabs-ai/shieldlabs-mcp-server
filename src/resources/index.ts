@@ -3,7 +3,7 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ErrorCode, McpError, type ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 import { ENTITY_BAND_NOTE, RATE_LIMIT_MARKER_NOTE, RISK_BAND_CATALOG } from '../catalog/bands.js';
 import { CONNECTION_TYPE_CATALOG } from '../catalog/connection-types.js';
-import { DETECTION_FLAG_CATALOG } from '../catalog/detection-flags.js';
+import { CURRENT_DETECTION_FLAG_KEYS, DETECTION_FLAG_CATALOG } from '../catalog/detection-flags.js';
 import { CATALOG_NOTES, RISK_SIGNAL_CATALOG } from '../catalog/risk-signals.js';
 import { DOCS_URL, HISTORY_TIMING, TOOL_NAMES, UUID_PATTERN } from '../constants.js';
 import type { ServerContext } from '../context.js';
@@ -34,7 +34,9 @@ export const RISK_SIGNALS_REFERENCE = {
   title: 'ShieldLabs risk signals, detection flags and connection types',
   notes: CATALOG_NOTES,
   risk_signals: RISK_SIGNAL_CATALOG,
-  detection_flags: DETECTION_FLAG_CATALOG,
+  detection_flags: DETECTION_FLAG_CATALOG.filter((info) =>
+    new Set<string>(CURRENT_DETECTION_FLAG_KEYS).has(info.flag),
+  ),
   connection_types: CONNECTION_TYPE_CATALOG,
   docs: `${DOCS_URL}/features/risk-signals`,
 };

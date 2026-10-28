@@ -1,0 +1,30 @@
+{
+  "source": "ShieldLabs-ai/shieldlabs-openapi",
+  "revision": "defb8734f74e77aef6f3429776d7825f1274d7d1",
+  "query_parameters": [
+    "ai_bot",
+    "ai_browser",
+    "banned_ip",
+    "check_incomplete",
+    "device_spoofing",
+    "from",
+    "ip_mismatch",
+    "is_antidetect",
+    "is_browser_automation",
+    "is_incognito",
+    "is_js_disabled",
+    "is_os_mismatch",
+    "is_os_not_detected",
+    "is_privacy_relay",
+    "is_proxy",
+    "is_search_bot",
+    "is_timezone_mismatch",
+    "is_tor",
+    "is_vpn",
+    "latency_test",
+    "network_check_incomplete",
+    "score_from",
+    "score_to",
+    "to"
+  ]
+}
