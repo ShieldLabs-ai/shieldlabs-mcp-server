@@ -36,11 +36,20 @@ Webhook names are trimmed and bounded to 80 Unicode characters. URLs require pub
 
 The list API is `/mcp/v1/domains/{domain}/history/{resource}`. It returns `data`, opaque `next_page_token` and an optional total. A card is `/mcp/v1/domains/{domain}/history/{resource}/{id}` and returns `data:card`. Cards contain `type`, `id`, `domain_id`, `domain`, `risk` and `signals`; other fields follow the public entity schema.
 
-MCP get returns `{found:true, identification:card}`. List returns `{resource, data, next_page_token, total?}`. Summary returns `{entity:card, computed_from:"API entity card"}`. Explanation preserves `risk` and sets `weights_available:false` when a card does not include detailed signal weights. No aggregate is recomputed from a single card.
+MCP identification get returns `{found:true, identification:card}`. List returns
+`{resource, data, next_page_token}`. Entity get returns `{resource, entity:card}`.
+Explanation preserves `risk` and sets `weights_available:false` when the card does not include
+signal weights. No aggregate is recomputed from a single card.
 
 An available identification score is `risk.score` with `risk.state:"ok"`. `risk.state:"unavailable"` remains unknown, never 0. `signals.state` and `high_risk_events.state` remain as returned. HRE confidence is separate from Risk Score. Missing flags or client identity are not false/human evidence.
 
-Lists support identifications and user only. Optional RFC3339 from/to must both be supplied; the window includes from and excludes to. Keep query fields unchanged while paging. Use page_token, never offset. Old value-based search and boolean row filters are rejected before requests. Filter by one risk band: `identification.risk_bands` for identifications or `entity.risk_bands` for users. Only the default newest-first sort is supported. Totals can be requested for identifications. Exact entity IDs are read with get/summarize.
+Lists support identifications and user only. Optional RFC3339 from/to must both be supplied;
+the window includes from and excludes to. Keep the flat query unchanged while paging with
+page_token. Filters include risk_bands, hre_min_accounts, hre_min_devices, ids (users only),
+risk_signals, source, campaign and the 20 boolean flags, including banned_ip. The signal/filter
+input rate_limited is rejected. HTTP 429 still uses the error code rate_limited.
+Nested filter, chips, offset, include_total and sort are rejected. Device cards additionally
+accept device_id_source; cards support relation queries defined in the tool schema.
 
 ## Resources and prompts
 

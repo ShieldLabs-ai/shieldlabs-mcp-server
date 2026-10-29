@@ -154,44 +154,13 @@ Read polling respects the total wait deadline, Retry-After and cancellation. A 4
 
 Node.js 20, 22 and 24 are tested in CI. Transports are stdio and streamable HTTP, with resources and prompts. The current Node SDK entity client is pinned by commit in CI. Scored webhook normalization remains separate from entity History; older row-search SDK methods do not represent the current API.
 
-## Deploy the hosted server
+## Hosted service
 
-The hosted mode (`--mode public`) serves many users from one server: every request brings the
-access token of its user's sign-in, which the ShieldLabs account API checks before the server
-answers. A merge to `development` installs that process on the dev droplet. A merge to
-`main` installs it on H3. It does not deploy a Cloudflare
-Worker, and a tag does not publish the npm package or the container image. The public
-`shieldlabs-mcp` repository owns those.
+Use `https://mcp.shieldlabs.ai/mcp` for the managed OAuth service and its 21 account tools.
+This repository publishes the local npm server, its seven stdio tools and reusable HTTP source.
+The managed service is deployed separately. Publishing an npm tag does not deploy that service.
 
-| Path | Answer |
-|---|---|
-| `POST /mcp` | MCP over streamable HTTP (stateless, JSON responses, one JSON-RPC message per request: a batch gets `400`). Without a token: `401` with `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`, which starts the sign-in. A token the account API refuses, or any credential that is not a ShieldLabs access token: `401` with `error="invalid_token"` added. Over the rate limits: `429`; when the token cannot be checked: `503`; when the account API refuses this server's signature: `500` |
-| `GET /.well-known/oauth-protected-resource/mcp`, `GET /.well-known/oauth-protected-resource` | Protected resource metadata (RFC 9728): the resource `<origin>/mcp`, the authorization server, `bearer_methods_supported: ["header"]`. No scopes: the ShieldLabs authorization server has none |
-| `GET /health` | `{"status":"ok","version":"..."}` without authentication and without a call to the account API |
-
-How a token is checked: the server sends `GET /mcp/v1/ping` to the account API with the token and
-an `X-Shield-Gateway: v1 kid=<key ID> t=<unix seconds> n=<nonce> sig=<signature>` header. The
-signature is the unpadded base64url HMAC-SHA256, with the secret of the gateway key, of `v1`, the
-time, the nonce, the method, the path with its query and the lowercase hex SHA-256 of the token,
-one per line. The account API accepts it for 60 seconds either way and refuses a nonce it has
-seen, so every request gets 16 fresh random bytes. A `200` lets the request through and is
-remembered for 60 seconds under the SHA-256 of the token; refusals are never remembered. The
-`shieldlabs_check_connection` always pings again, and every other operation independently
-revalidates the live token and account ownership through its signed backend request.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `SHIELDLABS_PUBLIC_ORIGIN` | required | Origin that clients connect to, for example `https://dev.mcp.shieldlabs.ai`. The resource, and the audience of the access tokens, is its `/mcp` path |
-| `SHIELDLABS_PORTAL_URL` | required | Origin of the ShieldLabs account API that checks every token, for example `https://account.shieldlabs.ai`. It has no default, so that a server for one environment never asks another |
-| `SHIELDLABS_AUTH_ISSUER` | `SHIELDLABS_PORTAL_URL` | Authorization server named in the metadata |
-| `MCP_GATEWAY_KEY` | required, secret | `kid:secret`, the entry for this server in `MCP_GATEWAY_KEYS` of the account API of the same environment (a key ID of 1 to 32 letters, digits, `.`, `_` or `-`, and a secret of at least 32 bytes). Without it every request gets a `500` |
-
-All URLs must use https, except on `localhost`, `127.0.0.1` and `[::1]`. The server never logs a
-token, the gateway secret or a signature: every request writes one JSON line with the route, the
-JSON-RPC method and tool name, the status, the duration, 8 hex characters of the token hash and
-how the token was checked.
-
-### Development droplet
+## Development droplet
 
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) runs on a push to `development` and on a
 manual rerun of that ref. It installs the built server on `dev-shield-admin-node-0`. The process listens on
