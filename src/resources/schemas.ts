@@ -11,5 +11,5 @@ export const IDENTIFICATION_SCHEMA = {
     '20 detection flags (null when unavailable) and optional bounded HRE/client identity. The identifier is identification_id, the same field as the webhook.',
 };
 
-/** Public wire schema, pinned to shieldlabs-openapi 3fc61ef. MCP outputs use identification_id, matching the webhook. */
+/** Public wire schema, pinned to shieldlabs-openapi ea1898a. MCP outputs use identification_id, matching the webhook. */
 export const WEBHOOK_EVENT_SCHEMA = wireWebhookSchema;

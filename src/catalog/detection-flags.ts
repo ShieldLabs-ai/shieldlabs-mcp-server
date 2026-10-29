@@ -15,7 +15,7 @@ export const CURRENT_DETECTION_FLAG_KEYS = [
   'latency_test',
   'anti_detect_browser',
   'device_spoofing',
-  'banned_ip',
+  'rate_limited',
   'incognito',
   'search_bot',
   'ai_bot',
@@ -38,7 +38,7 @@ export interface DetectionFlagInfo {
 export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
   {
     flag: 'private_relay',
-    label: 'Private Relay',
+    label: 'Privacy Relay',
     scored: true,
     meaning: 'The connection goes through iCloud Private Relay or a similar privacy relay.',
   },
@@ -50,8 +50,8 @@ export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
   },
   {
     flag: 'latency_test',
-    label: 'Latency Test',
-    scored: false,
+    label: 'Latency test',
+    scored: true,
     meaning: 'Latency-test evidence reported by the backend; do not invent a threshold.',
   },
   {
@@ -61,10 +61,11 @@ export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
     meaning: 'The backend reported device-spoofing evidence.',
   },
   {
-    flag: 'banned_ip',
-    label: 'Banned IP',
+    flag: 'rate_limited',
+    label: 'Rate limited',
     scored: false,
-    meaning: 'A banned or rate-limited IP; 999 remains a marker rather than a Risk Score.',
+    meaning:
+      'The address is restricted for exceeding the request rate; 999 is outside the Risk Score scale.',
   },
   {
     flag: 'ai_bot',

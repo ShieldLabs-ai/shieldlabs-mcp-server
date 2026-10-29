@@ -184,8 +184,12 @@ describe('History request budget', () => {
     const ctx = createContext(buildServerConfig(FULL_ENV, { tools: undefined, offline: true }), {
       maxRetries: 0,
     });
-    const page = await ctx.history!.history.search('ip', '203.0.113.200', { limit: 1 });
-    expect(page.total).toBe(5);
+    const page = await ctx.history!.entities.list(
+      '11111111-1111-4111-8111-111111111111',
+      'identifications',
+      { limit: 1 },
+    );
+    expect(page.data.length).toBeGreaterThan(0);
     expect(api.calls).toHaveLength(1);
   });
 
@@ -218,8 +222,8 @@ describe('History request budget', () => {
       historyBudget: { maxConcurrent: 2, perSecond: 1000 },
     });
     const calls = ['acct-a', 'acct-b', 'acct-c', 'acct-d'].map((_user) =>
-      callTool(connected!.client, TOOL_NAMES.searchHistory, {
-        type: 'user',
+      callTool(connected!.client, TOOL_NAMES.listHistory, {
+        resource: 'user',
         domain: '11111111-1111-4111-8111-111111111111',
         limit: 1,
       }),

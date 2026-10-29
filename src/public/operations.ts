@@ -39,9 +39,9 @@ export const OPERATION_TOOL_NAMES = [
   'shieldlabs_rotate_webhook_secret',
   'shieldlabs_verify_webhook',
   'shieldlabs_test_webhook',
-  TOOL_NAMES.searchHistory,
+  TOOL_NAMES.listHistory,
+  TOOL_NAMES.getHistory,
   TOOL_NAMES.getIdentification,
-  TOOL_NAMES.summarizeEntity,
   TOOL_NAMES.explainRiskScore,
 ] as const;
 

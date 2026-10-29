@@ -46,7 +46,7 @@ export function describeError(
       : `Error: the Management API rejected the credentials (HTTP ${error.status}). Check SHIELDLABS_SECRET_KEY and that SHIELDLABS_DOMAIN is exactly the registered domain (for example example.com), then restart the server; retrying will not help.`;
   } else if (error instanceof RateLimitError) {
     message = history
-      ? `Error: the History API rate limit was reached (HTTP 429). It allows about 15 requests per second per domain, shared with the site's own backend. Wait a few seconds and retry, and prefer one shieldlabs_summarize_entity call with a modest max_items over many searches.${retryAfterText(error)}`
+      ? `Error: the History API rate limit was reached (HTTP 429). It allows about 15 requests per second per domain, shared with the site's own backend. Wait a few seconds and retry, and prefer one shieldlabs_get_history call over many list pages.${retryAfterText(error)}`
       : `Error: the Management API rate limit was reached (HTTP 429). It allows about 15 calls per minute per IP and then blocks the IP for 10 minutes. Wait at least 10 minutes before calling shieldlabs_get_domain_profile again.${retryAfterText(error)}`;
   } else if (error instanceof QuotaExceededError) {
     message = `Error: the account has no identifications left (HTTP 402). Check the plan in the analytics dashboard (${APP_URL}).`;

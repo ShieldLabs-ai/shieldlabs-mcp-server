@@ -75,9 +75,9 @@ it('does not invent zero for unavailable risk', async () =>
 it('lists without a card id and forwards page tokens', async () =>
   hosted({ data: [card], next_page_token: 'next+/=' }, async (client, backend) => {
     const r = await client.callTool({
-      name: 'shieldlabs_search_history',
+      name: 'shieldlabs_list_history',
       arguments: {
-        type: 'identifications',
+        resource: 'identifications',
         domain: DOMAIN_ID,
         limit: 1,
         page_token: 'previous+/=',
@@ -97,13 +97,17 @@ it('lists without a card id and forwards page tokens', async () =>
 it('preserves API aggregate count without fake history analysis', async () =>
   hosted({ data: { ...card, type: 'user', id: 'qa-user', identifications: 5 } }, async (client) => {
     const r = await client.callTool({
-      name: 'shieldlabs_summarize_entity',
-      arguments: { type: 'user', value: 'qa-user', domain: DOMAIN_ID, response_format: 'json' },
+      name: 'shieldlabs_get_history',
+      arguments: {
+        resource: 'user',
+        resource_id: 'qa-user',
+        domain: DOMAIN_ID,
+        response_format: 'json',
+      },
     });
     expect(r.isError, JSON.stringify(r)).not.toBe(true);
     expect(r.structuredContent).toMatchObject({
       entity: { id: 'qa-user', identifications: 5 },
-      computed_from: 'API entity card',
     });
     expect(r.structuredContent).not.toHaveProperty('window');
   }));
@@ -111,9 +115,9 @@ it('refuses legacy offset instead of ignoring it', async () =>
   hosted({ data: card }, async (client, backend) => {
     const count = backend.calls.length;
     const r = await client.callTool({
-      name: 'shieldlabs_search_history',
+      name: 'shieldlabs_list_history',
       arguments: {
-        type: 'identifications',
+        resource: 'identifications',
         domain: DOMAIN_ID,
         offset: 20,
         response_format: 'json',

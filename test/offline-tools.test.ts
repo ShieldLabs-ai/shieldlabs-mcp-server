@@ -130,6 +130,69 @@ describe('shieldlabs_explain_risk_score', () => {
     expect(crawlerText).toContain('Detailed signal weights are unavailable');
   });
 
+  it('recovers score_details without requiring score or losing normalized context', async () => {
+    connected = await connect({});
+    const row = {
+      identification_id: '33333333-3333-4333-8333-333333333333',
+      risk_score: 30,
+      signals: [],
+      detection_flags: { vpn: true, proxy: false },
+      connection_type: 'vpn',
+      score_details: '[{"Value":30,"Description":"Is VPN"}]',
+    };
+    const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      identification: row,
+    });
+    expect(output.risk_score).toBe(30);
+    expect(
+      output.signals.map((signal: { name: string; weight: number }) => [
+        signal.name,
+        signal.weight,
+      ]),
+    ).toEqual([['vpn', 30]]);
+    expect(output.connection_type.value).toBe('vpn');
+    const text = textOf(
+      await callTool(connected.client, TOOL_NAMES.explainRiskScore, { identification: row }),
+    );
+    expect(text).toContain('| VPN (`vpn`) | +30 |');
+    expect(text).not.toContain('nothing added to the Risk Score');
+  });
+
+  it('prefers supplied weighted signals, including zero weights, over score_details', async () => {
+    connected = await connect({});
+    for (const weight of [0, 30]) {
+      const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+        identification: {
+          risk_score: 30,
+          signals: [{ name: 'proxy', weight }],
+          score_details: '[{"Value":30,"Description":"Is VPN"}]',
+        },
+      });
+      expect(
+        output.signals.map((signal: { name: string; weight: number }) => [
+          signal.name,
+          signal.weight,
+        ]),
+      ).toEqual([['proxy', weight]]);
+    }
+  });
+
+  it('keeps webhook origin when weights are recovered from score_details', async () => {
+    connected = await connect({});
+    const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      identification: {
+        event_type: 'identification.scored',
+        data: {
+          risk_score: 30,
+          signals: [],
+          score_details: '[{"Value":30,"Description":"Is VPN"}]',
+        },
+      },
+    });
+    expect(output.source).toBe('webhook');
+    expect(output.signals[0].weight).toBe(30);
+  });
+
   it('accepts the json output of shieldlabs_get_identification', async () => {
     connected = await connect(FULL_ENV, {
       apiFetch: mockApiFetch({ rows: historyPage.data, profile: MOCK_PROFILE }).fetch,

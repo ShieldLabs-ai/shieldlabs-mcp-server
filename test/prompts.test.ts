@@ -36,14 +36,14 @@ describe('integrate_shieldlabs', () => {
   it.each([
     [true, [TOOL_NAMES.currentTime]],
     [false, [TOOL_NAMES.currentTime]],
-    [true, [TOOL_NAMES.searchHistory, TOOL_NAMES.explainRiskScore]],
+    [true, [TOOL_NAMES.listHistory, TOOL_NAMES.explainRiskScore]],
     [false, [TOOL_NAMES.getIdentification]],
     [true, []],
   ])(
     'only mentions exposed tools across discovery and prompts (offline=%s, tools=%j)',
     async (offline, tools) => {
       const fetch = guideFetch(
-        ok(`# Setup\nCall ${TOOL_NAMES.getIdentification} and ${TOOL_NAMES.summarizeEntity}.`),
+        ok(`# Setup\nCall ${TOOL_NAMES.getIdentification} and ${TOOL_NAMES.getHistory}.`),
       );
       connected = await connect(FULL_ENV, { guideFetch: fetch }, { offline, tools });
       const { client } = connected;
@@ -310,6 +310,6 @@ describe('domain-scoped investigation prompts', () => {
       }),
     );
     expect(review).not.toContain(TOOL_NAMES.explainRiskScore);
-    expect(review).not.toContain(TOOL_NAMES.summarizeEntity);
+    expect(review).not.toContain(TOOL_NAMES.getHistory);
   });
 });

@@ -45,8 +45,8 @@ export const MAX_HTTP_BODY_BYTES = 1_000_000;
 /** Tool names. Every tool is read-only and prefixed with shieldlabs_. */
 export const TOOL_NAMES = {
   getIdentification: 'shieldlabs_get_identification',
-  searchHistory: 'shieldlabs_search_history',
-  summarizeEntity: 'shieldlabs_summarize_entity',
+  listHistory: 'shieldlabs_list_history',
+  getHistory: 'shieldlabs_get_history',
   explainRiskScore: 'shieldlabs_explain_risk_score',
   getDomainProfile: 'shieldlabs_get_domain_profile',
   verifyWebhookSignature: 'shieldlabs_verify_webhook_signature',
@@ -67,8 +67,8 @@ export const OFFLINE_TOOL_NAMES: readonly ToolName[] = [
 /** Tools that read the History API and need SHIELDLABS_API_KEY. */
 export const HISTORY_TOOL_NAMES: readonly ToolName[] = [
   TOOL_NAMES.getIdentification,
-  TOOL_NAMES.searchHistory,
-  TOOL_NAMES.summarizeEntity,
+  TOOL_NAMES.listHistory,
+  TOOL_NAMES.getHistory,
 ];
 
 /** History resources. Session and cookie are identification fields, not resources. */
@@ -76,9 +76,6 @@ export const HISTORY_RESOURCES = ['identifications', 'user', 'visitor', 'device'
 
 /** Lists in the first delivery. visitor, device and ip have a card, not a list. */
 export const HISTORY_LIST_RESOURCES = ['identifications', 'user'] as const;
-
-/** Resources shieldlabs_summarize_entity aggregates. identifications is a list, not an aggregate. */
-export const ENTITY_TYPES = ['user', 'visitor', 'device', 'ip'] as const;
 
 /** User HID values that do not name an account: anonymous checks and agent sentinels. */
 export const NON_ACCOUNT_USER_HIDS: ReadonlySet<string> = new Set([

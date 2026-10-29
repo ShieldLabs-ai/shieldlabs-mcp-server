@@ -28,25 +28,21 @@ describe('capabilities with every API configured', () => {
       expect(tool.outputSchema?.type).toBe('object');
     }
     const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
-    expect(byName[TOOL_NAMES.searchHistory]!.annotations!.openWorldHint).toBe(true);
+    expect(byName[TOOL_NAMES.listHistory]!.annotations!.openWorldHint).toBe(true);
     expect(byName[TOOL_NAMES.getDomainProfile]!.annotations!.openWorldHint).toBe(true);
     expect(byName[TOOL_NAMES.explainRiskScore]!.annotations!.openWorldHint).toBe(true);
     expect(byName[TOOL_NAMES.verifyWebhookSignature]!.annotations!.openWorldHint).toBe(false);
     expect(byName[TOOL_NAMES.currentTime]!.annotations!.openWorldHint).toBe(false);
 
-    const search = byName[TOOL_NAMES.searchHistory]!.inputSchema.properties as Record<string, any>;
+    const search = byName[TOOL_NAMES.listHistory]!.inputSchema.properties as Record<string, any>;
     expect(search.limit).toMatchObject({ type: 'integer', minimum: 1, maximum: 100, default: 20 });
-    expect(search.type.enum).toEqual(['identifications', 'user']);
-    const summarize = byName[TOOL_NAMES.summarizeEntity]!.inputSchema.properties as Record<
-      string,
-      any
-    >;
-    expect(summarize).not.toHaveProperty('max_items');
-    expect(summarize.type.enum).toEqual(['user', 'visitor', 'device', 'ip']);
-    // The value description names only the types this tool accepts.
-    expect(summarize.value.description).not.toMatch(/request_id|session_id|cookie_id/);
-    expect(summarize.value).toMatchObject({ minLength: 1, maxLength: 512 });
-    expect(search).not.toHaveProperty('value');
+    expect(search.resource.enum).toEqual(['identifications', 'user']);
+    const card = byName[TOOL_NAMES.getHistory]!.inputSchema.properties as Record<string, any>;
+    expect(card).not.toHaveProperty('max_items');
+    expect(card.resource.enum).toEqual(['identifications', 'user', 'visitor', 'device', 'ip']);
+    expect(card.resource_id).toMatchObject({ minLength: 1, maxLength: 512 });
+    expect(search).not.toHaveProperty('filter');
+    expect(search).not.toHaveProperty('include_total');
     expect(search.page_token).toMatchObject({ type: 'string' });
     expect(byName[TOOL_NAMES.getDomainProfile]!.description).toContain(
       '15 calls per minute per IP',
@@ -140,12 +136,12 @@ describe('--tools allowlist', () => {
       FULL_ENV,
       {},
       {
-        tools: [TOOL_NAMES.currentTime, TOOL_NAMES.searchHistory, TOOL_NAMES.getDomainProfile],
+        tools: [TOOL_NAMES.currentTime, TOOL_NAMES.listHistory, TOOL_NAMES.getDomainProfile],
       },
     );
     const { tools } = await connected.client.listTools();
     expect(tools.map((t) => t.name)).toEqual([
-      TOOL_NAMES.searchHistory,
+      TOOL_NAMES.listHistory,
       TOOL_NAMES.getDomainProfile,
       TOOL_NAMES.currentTime,
     ]);

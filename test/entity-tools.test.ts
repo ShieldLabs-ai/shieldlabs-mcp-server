@@ -169,11 +169,11 @@ for (const mode of ['stdio', 'hosted'] as const)
         },
         async (client) => {
           const r = await client.callTool({
-            name: 'shieldlabs_summarize_entity',
+            name: 'shieldlabs_get_history',
             arguments: {
               domain: DOMAIN_ID,
-              type: 'visitor',
-              value: REQUEST_ID,
+              resource: 'visitor',
+              resource_id: REQUEST_ID,
               response_format: 'json',
             },
           });
@@ -182,34 +182,48 @@ for (const mode of ['stdio', 'hosted'] as const)
           expect(r.structuredContent).not.toHaveProperty('entity.related_counts.visitors');
         },
       ));
-    for (const field of ['request_id', 'offset', 'score_from', 'is_vpn', 'max_items'])
+    for (const field of [
+      'request_id',
+      'offset',
+      'score_from',
+      'max_items',
+      'filter',
+      'include_total',
+    ])
       it(`rejects retired input ${field} before IO`, async () =>
-        run(mode, { body: { data: card } }, async (client, calls) => {
+        run(mode, { body: { data: [card], next_page_token: null } }, async (client, calls) => {
           const r = await client.callTool({
-            name: 'shieldlabs_search_history',
+            name: 'shieldlabs_list_history',
             arguments: {
               domain: DOMAIN_ID,
-              type: 'identifications',
-              [field]: field === 'request_id' ? REQUEST_ID : 1,
+              resource: 'identifications',
+              [field]:
+                field === 'request_id'
+                  ? REQUEST_ID
+                  : field === 'filter'
+                    ? { identification: {} }
+                    : 1,
             },
           });
           expect(r.isError).toBe(true);
           expect(calls).toHaveLength(0);
         }));
     for (const input of [
-      { filter: { identification: { ids: { user_hid: 'different-account' } } } },
-      { filter: { identification: { chips: [{ dimension: 'browser', value: 'Chrome' }] } } },
-      { filter: { identification: { risk_bands: ['trusted', 'dangerous'] } } },
       { sort: 'created_at' },
-      { type: 'user', include_total: true },
-      { type: 'user', filter: { identification: { risk_bands: ['dangerous'] } } },
-      { filter: { entity: { risk_bands: ['dangerous'] } } },
+      { chips: [{ dimension: 'browser', value: 'Chrome' }] },
+      { hre_min_accounts: 2 },
+      { hre_min_accounts: 100 },
+      { hre_min_devices: 3 },
+      { hre_min_devices: 100 },
+      { device_id_source: 'legacy' },
+      { ids: ['different-account'] },
+      { type: 'identifications' },
     ])
       it(`rejects filters unsupported by the current reader ${JSON.stringify(input)} before IO`, async () =>
         run(mode, { body: { data: [card], next_page_token: null } }, async (client, calls) => {
           const result = await client.callTool({
-            name: 'shieldlabs_search_history',
-            arguments: { domain: DOMAIN_ID, type: 'identifications', ...input },
+            name: 'shieldlabs_list_history',
+            arguments: { domain: DOMAIN_ID, resource: 'identifications', ...input },
           });
           expect(result.isError).toBe(true);
           expect(calls).toHaveLength(0);
@@ -228,32 +242,63 @@ for (const mode of ['stdio', 'hosted'] as const)
         async (client, calls) => {
           const args = {
             domain: DOMAIN_ID,
-            type: 'identifications',
+            resource: 'identifications' as const,
             limit: 1,
             from: '2026-10-27T00:00:00Z',
             to: '2026-10-28T00:00:00Z',
-            filter: { identification: { risk_bands: ['suspicious'] } },
-            include_total: true,
-            response_format: 'json',
+            risk_bands: ['suspicious', 'dangerous'],
+            hre_min_accounts: 3,
+            hre_min_devices: 4,
+            is_vpn: true,
+            response_format: 'json' as const,
           };
-          const a = await client.callTool({ name: 'shieldlabs_search_history', arguments: args });
+          const a = await client.callTool({ name: 'shieldlabs_list_history', arguments: args });
           expect(a.isError).not.toBe(true);
-          expect(a.structuredContent).toMatchObject({ next_page_token: 'opaque+/=', total: 2 });
+          expect(a.structuredContent).toMatchObject({ next_page_token: 'opaque+/=' });
+          expect(a.structuredContent).not.toHaveProperty('total');
           await client.callTool({
-            name: 'shieldlabs_search_history',
+            name: 'shieldlabs_list_history',
             arguments: { ...args, page_token: 'opaque+/=' },
           });
           const url = new URL(calls[1]!);
           expect(url.searchParams.get('page_token')).toBe('opaque+/=');
-          expect(JSON.parse(url.searchParams.get('filter')!)).toEqual(args.filter);
+          expect(url.searchParams.getAll('risk_bands')).toEqual(args.risk_bands);
+          expect(url.searchParams.get('hre_min_accounts')).toBe('3');
+          expect(url.searchParams.get('is_vpn')).toBe('true');
+          expect(url.searchParams.has('filter')).toBe(false);
           expect(url.searchParams.get('from')).toBe(args.from);
         },
       ));
+    it('forwards flat user filters without adding sort or a total', async () =>
+      run(mode, { body: { data: [], next_page_token: null, total: 0 } }, async (client, calls) => {
+        const r = await client.callTool({
+          name: 'shieldlabs_list_history',
+          arguments: {
+            domain: DOMAIN_ID,
+            resource: 'user',
+            risk_bands: ['dangerous'],
+            hre_min_accounts: 9,
+            hre_min_devices: 9,
+            ids: ['first'],
+            response_format: 'json',
+          },
+        });
+        expect(r.isError, JSON.stringify(r)).not.toBe(true);
+        expect(r.structuredContent).not.toHaveProperty('total');
+        const url = new URL(calls[0]!);
+        expect(url.pathname).toContain(`/domains/${DOMAIN_ID}/history/user`);
+        expect(url.searchParams.getAll('risk_bands')).toEqual(['dangerous']);
+        expect(url.searchParams.get('hre_min_accounts')).toBe('9');
+        expect(url.searchParams.getAll('ids')).toEqual(['first']);
+        expect(url.searchParams.has('include_total')).toBe(false);
+        expect(url.searchParams.has('filter')).toBe(false);
+        expect(url.searchParams.has('sort')).toBe(false);
+      }));
     it('does not invent a total for an empty page', async () =>
       run(mode, { body: { data: [], next_page_token: null } }, async (client) => {
         const r = await client.callTool({
-          name: 'shieldlabs_search_history',
-          arguments: { domain: DOMAIN_ID, type: 'user', response_format: 'json' },
+          name: 'shieldlabs_list_history',
+          arguments: { domain: DOMAIN_ID, resource: 'user', response_format: 'json' },
         });
         expect(r.isError).not.toBe(true);
         expect(r.structuredContent).not.toHaveProperty('total');
@@ -277,13 +322,17 @@ for (const mode of ['stdio', 'hosted'] as const)
           },
           async (client, calls) => {
             const r = await client.callTool({
-              name: 'shieldlabs_summarize_entity',
-              arguments: { domain: DOMAIN_ID, type, value: id, response_format: 'json' },
+              name: 'shieldlabs_get_history',
+              arguments: {
+                domain: DOMAIN_ID,
+                resource: type,
+                resource_id: id,
+                response_format: 'json',
+              },
             });
             expect(r.isError, JSON.stringify(r.content)).not.toBe(true);
             expect(r.structuredContent).toMatchObject({
               entity: { id, identifications: 5, high_risk_events: { state: 'not_applicable' } },
-              computed_from: 'API entity card',
             });
             expect(r.structuredContent).not.toHaveProperty('window');
             expect(calls).toHaveLength(1);
@@ -361,8 +410,8 @@ for (const mode of ['stdio', 'hosted'] as const)
         },
         async (client) => {
           const r = await client.callTool({
-            name: 'shieldlabs_search_history',
-            arguments: { domain: DOMAIN_ID, type: 'identifications', limit: 100 },
+            name: 'shieldlabs_list_history',
+            arguments: { domain: DOMAIN_ID, resource: 'identifications', limit: 100 },
           });
           expect(r.isError).toBe(true);
         },

@@ -155,6 +155,8 @@ describe('catalog', () => {
     const currentSlug: Record<string, string> = {
       privacy_relay: 'private_relay',
       stun_not_checked: 'network_check_incomplete',
+      ws_tcp_latency: 'latency_test',
+      banned_ip: 'rate_limited',
     };
     for (const slug of Object.values(SIGNALS)) expect(slugs).toContain(currentSlug[slug] ?? slug);
     expect(new Set(slugs).size).toBe(slugs.length);

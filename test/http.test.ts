@@ -175,9 +175,9 @@ describe('streamable HTTP transport', () => {
     const { tools } = await client.listTools();
     expect(tools).toHaveLength(7);
     const result = (await client.callTool({
-      name: TOOL_NAMES.searchHistory,
+      name: TOOL_NAMES.listHistory,
       arguments: {
-        type: 'user',
+        resource: 'user',
         domain: '11111111-1111-4111-8111-111111111111',
         limit: 1,
         response_format: 'json',

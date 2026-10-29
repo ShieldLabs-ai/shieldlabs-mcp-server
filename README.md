@@ -51,39 +51,39 @@ For local stdio:
 
 `shieldlabs_explain_risk_score` accepts a domain UUID plus `identification_id`, or a pasted identification. It preserves unknown risk and says when detailed signal weights are unavailable. It also accepts scored webhook payloads for offline explanation. Missing weights do not establish that nothing contributed to a nonzero score.
 
-### List entities
+### List History
 
-`shieldlabs_search_history` lists `identifications` or `user` in a domain. It does not require a card ID:
-
-```json
-{"domain":"11111111-1111-4111-8111-111111111111","type":"identifications","limit":20,"response_format":"json"}
-```
-
-The result contains `data`, `next_page_token` and an optional API-provided `total`. Preserve the same resource, window, filter, sort and limit when passing `next_page_token` as `page_token`. Tokens are opaque. The server can invalidate them after a restart; do not silently merge a fresh traversal into an earlier snapshot.
-
-Optional `from` and `to` are paired RFC3339 timestamps. The window includes `from` and excludes `to`. `filter` accepts one risk band per request; use `identification.risk_bands` for identifications and `entity.risk_bands` for users. Lists use the default newest-first sort; totals are available for identification lists. Read an exact entity through get/summarize:
+`shieldlabs_list_history` lists `identifications` or `user` in a domain. It does not require a card ID:
 
 ```json
-{"domain":"11111111-1111-4111-8111-111111111111","type":"identifications","filter":{"identification":{"risk_bands":["dangerous"]}},"from":"2026-10-27T00:00:00Z","to":"2026-10-28T00:00:00Z"}
+{"domain":"11111111-1111-4111-8111-111111111111","resource":"identifications","limit":20,"response_format":"json"}
 ```
 
-The old `value`, `offset`, `score_from`, `score_to` and boolean row-search fields are rejected. Visitor, device and IP resources have cards, not lists.
+The result contains `data` and `next_page_token`. Preserve the same resource, window and flat filters when passing `next_page_token` as `page_token`. Tokens are opaque. The server can invalidate them after a restart; do not silently merge a fresh traversal into an earlier snapshot.
 
-### Read an account, device, visitor or IP card
-
-`shieldlabs_summarize_entity` reads the backend aggregate card:
+Optional `from` and `to` are paired RFC3339 timestamps. The window includes `from` and excludes `to`. Filters are flat fields: `risk_bands`, `hre_min_accounts` (3-99), `hre_min_devices` (4-99), `ids` on the user list, `risk_signals`, `source`, `campaign` and boolean flags such as `is_vpn`. Nested `filter`, `chips`, `offset`, `include_total` and `sort` are rejected.
 
 ```json
-{"domain":"11111111-1111-4111-8111-111111111111","type":"user","value":"exact-user-hid","response_format":"json"}
+{"domain":"11111111-1111-4111-8111-111111111111","resource":"identifications","risk_bands":["dangerous"],"is_vpn":true,"from":"2026-10-27T00:00:00Z","to":"2026-10-28T00:00:00Z"}
 ```
 
-The result is `{entity:card, computed_from:"API entity card"}`. It preserves the API's identification count, risk, related counts and High-Risk Events availability. One card is not one identification, and it does not enumerate the underlying history. No client-computed account counts or band split are invented.
+Visitor, device and IP resources have cards, not lists.
+
+### Read one History card
+
+`shieldlabs_get_history` reads one identification, user, visitor, device or ip card:
+
+```json
+{"domain":"11111111-1111-4111-8111-111111111111","resource":"user","resource_id":"exact-user-hid","response_format":"json"}
+```
+
+The result is `{resource, entity}`. It preserves the API's identification count, risk, related counts and High-Risk Events availability. One card is not one identification, and it does not enumerate the underlying history. Card reads also accept `device_id_source`, `relation`, `relation_limit` and `relation_page_token`.
 
 ### Webhooks and setup
 
 Hosted tools can create and verify a receiver, send a signed test, read delivery status, opt into `multiaccount` events and rotate credentials with confirmation. A sample test does not prove real delivery. HRE confidence is separate from Risk Score; unknown metadata does not imply a negative result.
 
-Use `integrate_shieldlabs` to inspect the project and choose installation stages. `investigate_user` and `review_request` require an explicit domain UUID and only mention enabled tools. Server-side integrations read the domain-scoped public History API. Keep the public browser key separate from server credentials.
+Use `integrate_shieldlabs` to inspect the project and choose installation stages. `investigate_user` and `review_request` require an explicit domain UUID and only mention enabled tools. Server-side integrations use the Node SDK's current `entities` client. Keep the public browser key separate from server credentials.
 
 ## Reference
 
@@ -106,8 +106,8 @@ History requests require `domain` in tool input. Browser code must never receive
 | Tool | Purpose |
 |---|---|
 | `shieldlabs_get_identification` | Read an identification card by ID and domain UUID |
-| `shieldlabs_search_history` | List identifications or users with opaque pagination |
-| `shieldlabs_summarize_entity` | Read a user, visitor, device or IP aggregate card |
+| `shieldlabs_list_history` | List identifications or users with opaque pagination |
+| `shieldlabs_get_history` | Read one identification, user, visitor, device or ip card |
 | `shieldlabs_explain_risk_score` | Explain reported risk and weight availability |
 | `shieldlabs_get_domain_profile` | Read and cache the optional Management profile |
 | `shieldlabs_verify_webhook_signature` | Verify original bytes before interpreting a webhook |
@@ -154,31 +154,118 @@ Read polling respects the total wait deadline, Retry-After and cancellation. A 4
 
 Node.js 20, 22 and 24 are tested in CI. Transports are stdio and streamable HTTP, with resources and prompts. The current Node SDK entity client is pinned by commit in CI. Scored webhook normalization remains separate from entity History; older row-search SDK methods do not represent the current API.
 
-## Build from source
+## Deploy the hosted server
 
-Use Node.js 20 or later and Git. The SDK is bundled from an immutable public source commit:
+The hosted mode (`--mode public`) serves many users from one server: every request brings the
+access token of its user's sign-in, which the ShieldLabs account API checks before the server
+answers. A merge to `development` installs that process on the dev droplet. A merge to
+`main` installs it on H3. It does not deploy a Cloudflare
+Worker, and a tag does not publish the npm package or the container image. The public
+`shieldlabs-mcp` repository owns those.
 
-```sh
-npm ci
-npm run bootstrap:sdk
-npm run build
-```
+| Path | Answer |
+|---|---|
+| `POST /mcp` | MCP over streamable HTTP (stateless, JSON responses, one JSON-RPC message per request: a batch gets `400`). Without a token: `401` with `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`, which starts the sign-in. A token the account API refuses, or any credential that is not a ShieldLabs access token: `401` with `error="invalid_token"` added. Over the rate limits: `429`; when the token cannot be checked: `503`; when the account API refuses this server's signature: `500` |
+| `GET /.well-known/oauth-protected-resource/mcp`, `GET /.well-known/oauth-protected-resource` | Protected resource metadata (RFC 9728): the resource `<origin>/mcp`, the authorization server, `bearer_methods_supported: ["header"]`. No scopes: the ShieldLabs authorization server has none |
+| `GET /health` | `{"status":"ok","version":"..."}` without authentication and without a call to the account API |
+
+How a token is checked: the server sends `GET /mcp/v1/ping` to the account API with the token and
+an `X-Shield-Gateway: v1 kid=<key ID> t=<unix seconds> n=<nonce> sig=<signature>` header. The
+signature is the unpadded base64url HMAC-SHA256, with the secret of the gateway key, of `v1`, the
+time, the nonce, the method, the path with its query and the lowercase hex SHA-256 of the token,
+one per line. The account API accepts it for 60 seconds either way and refuses a nonce it has
+seen, so every request gets 16 fresh random bytes. A `200` lets the request through and is
+remembered for 60 seconds under the SHA-256 of the token; refusals are never remembered. The
+`shieldlabs_check_connection` always pings again, and every other operation independently
+revalidates the live token and account ownership through its signed backend request.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SHIELDLABS_PUBLIC_ORIGIN` | required | Origin that clients connect to, for example `https://dev.mcp.shieldlabs.ai`. The resource, and the audience of the access tokens, is its `/mcp` path |
+| `SHIELDLABS_PORTAL_URL` | required | Origin of the ShieldLabs account API that checks every token, for example `https://account.shieldlabs.ai`. It has no default, so that a server for one environment never asks another |
+| `SHIELDLABS_AUTH_ISSUER` | `SHIELDLABS_PORTAL_URL` | Authorization server named in the metadata |
+| `MCP_GATEWAY_KEY` | required, secret | `kid:secret`, the entry for this server in `MCP_GATEWAY_KEYS` of the account API of the same environment (a key ID of 1 to 32 letters, digits, `.`, `_` or `-`, and a secret of at least 32 bytes). Without it every request gets a `500` |
+
+All URLs must use https, except on `localhost`, `127.0.0.1` and `[::1]`. The server never logs a
+token, the gateway secret or a signature: every request writes one JSON line with the route, the
+JSON-RPC method and tool name, the status, the duration, 8 hex characters of the token hash and
+how the token was checked.
+
+### Development droplet
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) runs on a push to `development` and on a
+manual rerun of that ref. It installs the built server on `dev-shield-admin-node-0`. The process listens on
+`127.0.0.1:8787`. nginx serves `https://dev.mcp.shieldlabs.ai`. The gateway key is the GitHub
+Environment secret `MCP_GATEWAY_KEY`, not a file in git.
+
+### Production host
+
+[`.github/workflows/production.yml`](.github/workflows/production.yml) runs on a push to `main`.
+It builds the checksummed bundle and, in the `Production` environment, copies it to H3 and runs
+`deploy/production/install.py`. The workflow does not receive the gateway key. The host must
+already be `prod-shield-0` with `/etc/shieldlabs-mcp-production.env`, the `mcp.shieldlabs.ai`
+certificate, and an accepted account backend. A pull request only builds the artifact.
+
+`wrangler.jsonc` keeps local Worker settings and has no custom domain. Do not run `wrangler deploy`.
+`npm run worker:check` only bundles the Worker and does not upload it.
+
+Domain, History and webhook tools call the public `/mcp/v1` API. The connection probe uses
+`GET /mcp/v1/ping`; reading a domain or a record is a separate verification step.
+
+### Process
+
+The droplet starts `node dist/index.js --transport http --mode public --host 127.0.0.1 --port 8787 --trust-proxy`.
+It speaks plain HTTP. nginx terminates TLS and is the only proxy that can reach the port.
+Rate limits are kept in memory per process, and request logs go to stdout, one JSON line per
+request. This repository does not push a container image.
+
+The per-address limits use the address of each TCP connection, which behind a proxy is the
+proxy's for every client. Add `--trust-proxy` to take the client address from `CF-Connecting-IP`
+instead: the proxy must then set that header on every request, replacing any value the client
+sent. Cloudflare sets it; with nginx, use `proxy_set_header CF-Connecting-IP $remote_addr;`.
 
 ## Development
 
-The tests exercise tools, resources, prompts, tenant isolation, gateway signatures, malformed
-payloads, secret masking and response formatting against synthetic backends.
-
-```sh
-npm run test:worker
-npm run worker:check
-npm pack --dry-run
+```bash
+npm ci
+# Until @shieldlabs-ai/node is published, build its tarball in a checkout of shieldlabs-node:
+(cd ../shieldlabs-node && npm ci && npm pack)
+npm install --no-save ../shieldlabs-node/shieldlabs-ai-node-1.0.0.tgz
+npm run typecheck
+npm run lint
+npm test -- --coverage
+npm run build
+node dist/index.js --help
+npm run smoke            # the built server over stdio against the fake History API
+npm run test:worker      # the hosted mode in workerd (Node.js 22 or later)
+npm run worker:check     # the Worker bundle: no Node.js built-in module, size limit
 ```
 
-Production deployment automation and secrets are maintained separately. Source publication is
-separate from a managed-service deployment or an official client-directory listing.
+`@shieldlabs-ai/node` is bundled into `dist/` at build time, so the published package depends only on
+`@modelcontextprotocol/sdk` and `zod`.
+
+### Fake History API
+
+`scripts/mock-history-api.mjs` serves a deterministic dataset (`test/mock-data/`, generated by
+`scripts/generate-mock-data.mjs`) as a fake History API and Management API:
+
+```bash
+npm run build
+node scripts/mock-history-api.mjs --port 8788
+# in another terminal: the MCP Inspector CLI passes environment variables with -e
+npx @modelcontextprotocol/inspector --cli node dist/index.js \
+  -e SHIELDLABS_API_KEY=sec_evaldata-mockdata-00000001 \
+  -e SHIELDLABS_API_BASE_URL=http://127.0.0.1:8788 \
+  --method tools/list
+```
+
+`npm run smoke` does the same without extra downloads: it starts the fake API, runs the built
+server over stdio with the MCP SDK client and calls its tools, resources and prompts.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Documentation: [docs.shieldlabs.ai](https://docs.shieldlabs.ai).
+Support: [contact@shieldlabs.ai](mailto:contact@shieldlabs.ai).
 
 ## License
 
-[MIT](LICENSE). ShieldLabs Inc. Support: contact@shieldlabs.ai.
+[MIT](LICENSE)
 

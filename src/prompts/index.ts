@@ -47,19 +47,18 @@ export function registerPrompts(server: McpServer, ctx: ServerContext): void {
     .string()
     .regex(UUID_PATTERN)
     .describe('Public domain UUID from shieldlabs_list_domains.');
-  if (has(TOOL_NAMES.summarizeEntity))
+  if (has(TOOL_NAMES.getHistory))
     server.registerPrompt(
       'investigate_user',
       {
         title: 'Investigate a user',
-        description:
-          'Read one account aggregate card and its reported risk, counts and HRE availability.',
+        description: 'Read one user card and its reported risk, counts and HRE availability.',
         argsSchema: { domain, user_hid: z.string().min(1).max(512) },
       },
       ({ domain, user_hid }) =>
         userMessage(
           [
-            `Read ${TOOL_NAMES.summarizeEntity} with domain=${JSON.stringify(domain)}, type="user", value=${JSON.stringify(user_hid)}.`,
+            `Read ${TOOL_NAMES.getHistory} with domain=${JSON.stringify(domain)}, resource="user", resource_id=${JSON.stringify(user_hid)}.`,
             'Report only the API card: risk state/band/score when available, identifications, related_counts and high_risk_events availability. Do not claim that a card enumerates individual identifications or other account IDs. Confidence is separate from Risk Score.',
             DATA_RULE,
           ].join('\n\n'),

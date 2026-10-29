@@ -144,10 +144,10 @@ export function operationsSuite(host: Host) {
       const client = await connect(host(backend));
       try {
         const result = await client.callTool({
-          name: 'shieldlabs_search_history',
+          name: 'shieldlabs_list_history',
           arguments: {
             domain: DOMAIN_ID,
-            type: 'identifications',
+            resource: 'identifications',
             limit: 1,
             page_token: 'previous+/=',
             response_format: 'json',

@@ -6,6 +6,7 @@ import {
   parseHistoryEntity,
   type EntityListOptions,
   type EntityPage,
+  type EntityReadOptions,
   type EntityWindow,
   type HistoryEntity,
   type HistoryResource,
@@ -13,6 +14,7 @@ import {
 import { z } from 'zod';
 import { CHARACTER_LIMIT, TOOL_NAMES, UUID_PATTERN } from './constants.js';
 import { ToolInputError } from './errors.js';
+import { canonicalSignalName } from './catalog/risk-signals.js';
 import { buildExplanation, parseIdentificationInput } from './explain.js';
 import { code, cutSerialized, escapeInvisible, UNTRUSTED_DATA_FIELD_NOTE } from './format.js';
 
@@ -137,13 +139,57 @@ export const EntitySchema = z.object({
     .nullable()
     .optional(),
 });
-const BandFilter = z.object({ risk_bands: z.array(Band).min(1).max(1) }).strict();
-export const EntityFilterSchema = z
-  .object({
-    identification: BandFilter.optional(),
-    entity: BandFilter.optional(),
-  })
-  .strict();
+const FLAG_NAMES = [
+  'is_vpn',
+  'is_tor',
+  'is_proxy',
+  'is_privacy_relay',
+  'network_check_incomplete',
+  'check_incomplete',
+  'is_antidetect',
+  'is_os_mismatch',
+  'is_os_not_detected',
+  'is_timezone_mismatch',
+  'is_js_disabled',
+  'is_browser_automation',
+  'is_incognito',
+  'is_search_bot',
+  'ip_mismatch',
+  'latency_test',
+  'device_spoofing',
+  'rate_limited',
+  'ai_bot',
+  'ai_browser',
+] as const;
+const RELATIONS = [
+  'visitors',
+  'devices',
+  'users',
+  'public_ips',
+  'sessions',
+  'cookies',
+  'local_ips',
+  'countries',
+  'local_countries',
+  'browsers',
+  'os',
+  'device_types',
+  'connection_types',
+  'risk_signals',
+  'high_risk_events',
+] as const;
+const FlagFields = Object.fromEntries(FLAG_NAMES.map((name) => [name, z.boolean().optional()]));
+const FlatFilters = {
+  snapshot: z.string().min(1).max(4096).optional(),
+  risk_bands: z.array(Band).max(3).optional(),
+  hre_min_accounts: z.number().int().min(3).max(99).optional(),
+  hre_min_devices: z.number().int().min(4).max(99).optional(),
+  ids: z.array(z.string().min(1).max(512)).max(100).optional(),
+  risk_signals: z.array(z.string().min(1).max(128)).max(32).optional(),
+  source: z.array(z.string().min(1).max(512)).max(8).optional(),
+  campaign: z.array(z.string().min(1).max(512)).max(8).optional(),
+  ...FlagFields,
+};
 const Domain = z
   .string()
   .regex(UUID_PATTERN)
@@ -177,7 +223,7 @@ export interface EntityReader {
     domain: string,
     resource: HistoryResource,
     id: string,
-    options: EntityWindow,
+    options: EntityReadOptions,
   ): Promise<HistoryEntity>;
 }
 interface Runtime {
@@ -195,6 +241,7 @@ interface Runtime {
 /** Output only public schema fields. Browser text stays inert; opaque paging tokens are untouched. */
 export function entityView(value: unknown): HistoryEntity {
   const parsed = EntitySchema.parse(parseHistoryEntity(value));
+  parsed.signals.items = parsed.signals.items.map(canonicalSignalName);
   const safe = (v: unknown): unknown =>
     typeof v === 'string'
       ? cutSerialized(escapeInvisible(v), 1000)
@@ -239,6 +286,22 @@ function windowOptions(
     signal,
   };
 }
+function flatOptions(v: Record<string, unknown>): EntityListOptions {
+  const out: Record<string, unknown> = {};
+  for (const key of [
+    'snapshot',
+    'risk_bands',
+    'hre_min_accounts',
+    'hre_min_devices',
+    'ids',
+    'risk_signals',
+    'source',
+    'campaign',
+    ...FLAG_NAMES,
+  ])
+    if (v[key] !== undefined) out[key] = v[key];
+  return out;
+}
 export function registerEntityHistoryTools(server: McpServer, runtime: Runtime): void {
   const { reader } = runtime;
   const emit = (data: Record<string, unknown>, format: 'markdown' | 'json', markdown: string) => {
@@ -256,51 +319,36 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
     );
   };
   const allowed = (name: string) => runtime.enabled === undefined || runtime.enabled.has(name);
-  if (allowed(TOOL_NAMES.searchHistory))
+  if (allowed(TOOL_NAMES.listHistory))
     server.registerTool(
-      TOOL_NAMES.searchHistory,
+      TOOL_NAMES.listHistory,
       {
-        title: 'List History entities',
+        title: 'List History',
         description:
-          'List identifications or users in one domain. Use page_token from the previous page, preserving the resource, window, filter, sort and limit. Dates are RFC3339 and the window is half-open. Old value/offset/boolean search fields are not accepted.',
+          'List identifications or users in one domain. domain is the public UUID from shieldlabs_list_domains. Repeat page_token with the same resource, window and flat filters. Filters are risk_bands, hre_min_accounts (3-99), hre_min_devices (4-99), ids (user list only), risk_signals, source, campaign and boolean flags. Dates are RFC3339 and the window is half-open. Nested filter, chips, offset, include_total and sort are rejected. visitor, device and ip have a card, not a list.',
         inputSchema: z
           .object({
             ...common,
-            type: z.enum(['identifications', 'user']),
+            resource: z.enum(['identifications', 'user']),
             limit: z.number().int().min(1).max(100).default(20),
             page_token: z.string().min(1).max(4096).optional(),
-            include_total: z.boolean().optional(),
-            sort: z.string().optional(),
-            filter: EntityFilterSchema.optional(),
+            ...FlatFilters,
           })
           .strict()
           .superRefine(windowRange)
           .superRefine((v, ctx) => {
-            if (
-              v.sort !== undefined &&
-              v.sort !== (v.type === 'identifications' ? '-created_at' : '-last_seen')
-            )
+            if (v.resource !== 'user' && v.ids !== undefined)
+              ctx.addIssue({ code: 'custom', message: 'ids is only valid for the user list.' });
+            if ((v.source?.length ?? 0) + (v.campaign?.length ?? 0) > 8)
               ctx.addIssue({
                 code: 'custom',
-                message: 'Only the default newest-first sort is supported.',
-              });
-            if (v.type === 'user' && v.include_total === true)
-              ctx.addIssue({ code: 'custom', message: 'User list totals are unavailable.' });
-            if (
-              (v.type === 'identifications' && v.filter?.entity !== undefined) ||
-              (v.type === 'user' && v.filter?.identification !== undefined)
-            )
-              ctx.addIssue({
-                code: 'custom',
-                message:
-                  'Use identification risk_bands for identifications and entity risk_bands for users.',
+                message: 'source and campaign together accept at most 8 values.',
               });
           }),
         outputSchema: z.object({
           resource: z.enum(['identifications', 'user']),
           data: z.array(EntitySchema),
           next_page_token: z.string().nullable(),
-          total: z.number().int().nonnegative().optional(),
           untrusted_data_note: z.string(),
         }),
         annotations: {
@@ -312,24 +360,19 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
       },
       async (args, extra) => {
         try {
-          const { domain, type, response_format, limit, page_token, include_total, sort, filter } =
-            args;
-          const page = await reader.list(domain, type, {
+          const { domain, resource, response_format, limit, page_token } = args;
+          const page = await reader.list(domain, resource, {
+            ...flatOptions(args),
             ...windowOptions(args, extra.signal),
             limit,
             ...(page_token === undefined ? {} : { page_token }),
-            ...(include_total === undefined ? {} : { include_total }),
-            ...(sort === undefined ? {} : { sort }),
-            ...(filter === undefined
-              ? {}
-              : { filter: filter as NonNullable<EntityListOptions['filter']> }),
           });
           const data = page.data.map(entityView);
           return emit(
-            { resource: type, ...page, data },
+            { resource, data, next_page_token: page.next_page_token },
             response_format,
             [
-              '# History entities',
+              '# History',
               ...data.map(entityMarkdown),
               page.next_page_token
                 ? 'More records are available. Continue with next_page_token.'
@@ -388,28 +431,36 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
         }
       },
     );
-  if (allowed(TOOL_NAMES.summarizeEntity))
+  if (allowed(TOOL_NAMES.getHistory))
     server.registerTool(
-      TOOL_NAMES.summarizeEntity,
+      TOOL_NAMES.getHistory,
       {
-        title: 'Read entity summary',
+        title: 'Get History record',
         description:
-          'Read the API aggregate card for a user, visitor, device or IP. Preserve reported counts, availability and HRE. This does not enumerate or analyze individual identifications.',
+          'Read one identification, user, visitor, device or ip card. domain is the public UUID and resource_id is the record id. The same flat list filters apply, plus device_id_source (legacy or fp21_record), relation, relation_limit and relation_page_token. Nested filter, chips, offset and include_total are rejected.',
         inputSchema: z
           .object({
             ...common,
-            type: z.enum(['user', 'visitor', 'device', 'ip']),
-            value: z
-              .string()
-              .min(1)
-              .max(512)
-              .describe('Exact entity ID for user, visitor, device or IP.'),
+            resource: z.enum(['identifications', 'user', 'visitor', 'device', 'ip']),
+            resource_id: z.string().min(1).max(512),
+            device_id_source: z.enum(['legacy', 'fp21_record']).optional(),
+            relation: z.enum(RELATIONS).optional(),
+            relation_limit: z.number().int().min(1).max(100).optional(),
+            relation_page_token: z.string().min(1).max(4096).optional(),
+            ...FlatFilters,
           })
           .strict()
-          .superRefine(windowRange),
+          .superRefine(windowRange)
+          .superRefine((v, ctx) => {
+            if ((v.source?.length ?? 0) + (v.campaign?.length ?? 0) > 8)
+              ctx.addIssue({
+                code: 'custom',
+                message: 'source and campaign together accept at most 8 values.',
+              });
+          }),
         outputSchema: z.object({
+          resource: z.enum(['identifications', 'user', 'visitor', 'device', 'ip']),
           entity: EntitySchema,
-          computed_from: z.literal('API entity card'),
           untrusted_data_note: z.string(),
         }),
         annotations: {
@@ -422,10 +473,21 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
       async (args, extra) => {
         try {
           const entity = entityView(
-            await reader.get(args.domain, args.type, args.value, windowOptions(args, extra.signal)),
+            await reader.get(args.domain, args.resource, args.resource_id, {
+              ...flatOptions(args),
+              ...windowOptions(args, extra.signal),
+              ...(args.device_id_source === undefined
+                ? {}
+                : { device_id_source: args.device_id_source }),
+              ...(args.relation === undefined ? {} : { relation: args.relation }),
+              ...(args.relation_limit === undefined ? {} : { relation_limit: args.relation_limit }),
+              ...(args.relation_page_token === undefined
+                ? {}
+                : { relation_page_token: args.relation_page_token }),
+            }),
           );
           return emit(
-            { entity, computed_from: 'API entity card' },
+            { resource: args.resource, entity },
             args.response_format,
             entityMarkdown(entity),
           );
@@ -515,7 +577,7 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
               `${entityMarkdown(entity)}\n\n${note}`,
             );
           }
-          const built = buildExplanation(await parseIdentificationInput(input!));
+          const built = buildExplanation(parseIdentificationInput(input!));
           return emit(built.explanation, args.response_format, built.markdown);
         } catch (e) {
           return runtime.failure(e);
@@ -593,11 +655,30 @@ export function hostedEntityReader(
 ): EntityReader {
   const path = (domain: string, resource: HistoryResource) =>
     `/mcp/v1/domains/${domain.toLowerCase()}/history/${resource}`;
-  const query = (options: EntityListOptions) => {
+  const query = (options: EntityReadOptions) => {
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(options)) {
-      if (k !== 'signal' && v !== undefined)
-        q.set(k, k === 'filter' ? JSON.stringify(v) : String(v));
+    const add = (key: string, value: string) => q.append(key, value);
+    for (const key of [
+      'from',
+      'to',
+      'snapshot',
+      'page_token',
+      'device_id_source',
+      'relation',
+      'relation_page_token',
+    ] as const) {
+      const value = options[key];
+      if (value !== undefined) add(key, value);
+    }
+    for (const key of ['limit', 'hre_min_accounts', 'hre_min_devices', 'relation_limit'] as const) {
+      const value = options[key];
+      if (value !== undefined) add(key, String(value));
+    }
+    for (const key of ['risk_bands', 'risk_signals', 'source', 'campaign', 'ids'] as const)
+      for (const item of options[key] ?? []) add(key, item);
+    for (const key of FLAG_NAMES) {
+      const value = options[key];
+      if (value !== undefined) add(key, value ? 'true' : 'false');
     }
     return q.size ? `?${q.toString()}` : '';
   };

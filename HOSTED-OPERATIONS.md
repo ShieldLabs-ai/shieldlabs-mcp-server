@@ -26,8 +26,8 @@ Domain and webhook identifiers are public UUIDs. History `domain` is a UUID, not
 | `shieldlabs_verify_webhook` | domain_id, webhook_id |
 | `shieldlabs_test_webhook` | domain_id, webhook_id |
 | `shieldlabs_get_identification` | domain UUID, identification_id, optional wait and paired from/to |
-| `shieldlabs_search_history` | domain UUID, type=identifications/user, optional limit, page_token, from/to, sort, include_total, filter |
-| `shieldlabs_summarize_entity` | domain UUID, type=user/visitor/device/ip, value, optional paired from/to |
+| `shieldlabs_list_history` | domain UUID, resource=identifications/user, flat filters, limit, page_token, snapshot, paired from/to |
+| `shieldlabs_get_history` | domain UUID, resource=identifications/user/visitor/device/ip, resource_id, the same flat filters, device_id_source, relation |
 | `shieldlabs_explain_risk_score` | identification_id with domain UUID, or a pasted identification |
 
 Webhook names are trimmed and bounded to 80 Unicode characters. URLs require public HTTPS without credentials and are bounded to 512 UTF-8 bytes. Omitted patch fields are preserved. A subscription-only patch does not change the endpoint. Pure IPv6 is refused locally; IPv4-mapped IPv6 is normalized to IPv4 for IP cards.

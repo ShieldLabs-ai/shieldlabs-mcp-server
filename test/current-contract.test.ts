@@ -28,7 +28,7 @@ describe('entity history cards', () => {
 
   it('keeps the card id and a score of 30', async () => {
     const output = toIdentificationOutput(
-      await normalizeHistoryRow({
+      normalizeHistoryRow({
         type: 'identification',
         id,
         risk: { state: 'ok', band: 'suspicious', score: 30 },
@@ -43,7 +43,7 @@ describe('entity history cards', () => {
 
   it('keeps an unavailable risk null instead of score 0', async () => {
     const output = toIdentificationOutput(
-      await normalizeHistoryRow({
+      normalizeHistoryRow({
         type: 'identification',
         id,
         risk: { state: 'unavailable' },
@@ -53,7 +53,7 @@ describe('entity history cards', () => {
     expect(output.identification_id).toBe(id);
     expect(output.risk_score).toBeNull();
     expect(output.risk_band).toBeNull();
-    const normalized = await normalizeHistoryRow({
+    const normalized = normalizeHistoryRow({
       type: 'identification',
       id,
       risk: { state: 'unavailable' },
@@ -77,7 +77,7 @@ describe('current public contract projection', () => {
       ai_bot: true,
       device_spoofing: null,
       os_mismatch: true,
-      banned_ip: true,
+      rate_limited: true,
     });
     expect(
       currentFlags({ detection_flags: { privacy_relay: true, stun_not_checked: false } }),
@@ -133,7 +133,7 @@ describe('current public contract projection', () => {
       client_identity: identity,
       is_ai_bot: true,
     };
-    const normalized = await normalizeHistoryRow(row);
+    const normalized = normalizeHistoryRow(row);
     const output = toIdentificationOutput(normalized);
     expect(IdentificationOutputSchema.safeParse(output).success).toBe(true);
     expect(output.detection_flags.ai_bot).toBe(true);
@@ -158,7 +158,7 @@ describe('current public contract projection', () => {
     const row = { ...fixture('history-page.json').data[0] };
     delete row.request_id;
     row.identification_id = '33333333-3333-4333-8333-333333333333';
-    const normalized = await normalizeHistoryRow(row);
+    const normalized = normalizeHistoryRow(row);
     expect(toIdentificationOutput(normalized).identification_id).toBe(row.identification_id);
     expect(fromIdentification(normalized).identification_id).toBe(row.identification_id);
   });
@@ -184,7 +184,7 @@ describe('current public contract projection', () => {
         })),
       },
     };
-    const normalized = await normalizeHistoryRow(raw);
+    const normalized = normalizeHistoryRow(raw);
     const result = buildExplanation(fromIdentification(normalized));
     expect(result.markdown.length).toBeLessThanOrEqual(CHARACTER_LIMIT);
     expect(JSON.stringify(result.explanation).length).toBeLessThanOrEqual(CHARACTER_LIMIT);

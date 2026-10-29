@@ -66,9 +66,9 @@ try {
 
   const page = json(
     await client.callTool({
-      name: 'shieldlabs_search_history',
+      name: 'shieldlabs_list_history',
       arguments: {
-        type: 'identifications',
+        resource: 'identifications',
         domain: MOCK_DOMAIN_ID,
         limit: 5,
         response_format: 'json',
@@ -76,7 +76,7 @@ try {
     }),
   );
   assert.equal(page.data.length, 5);
-  console.log(`shieldlabs_search_history: ${page.data.length} records`);
+  console.log(`shieldlabs_list_history: ${page.data.length} records`);
 
   const first = page.data[0];
   const found = json(
@@ -92,19 +92,17 @@ try {
 
   const summary = json(
     await client.callTool({
-      name: 'shieldlabs_summarize_entity',
+      name: 'shieldlabs_get_history',
       arguments: {
-        type: 'ip',
-        value: '203.0.113.200',
+        resource: 'ip',
+        resource_id: '203.0.113.200',
         domain: MOCK_DOMAIN_ID,
         response_format: 'json',
       },
     }),
   );
   assert.equal(summary.entity.identifications, 5);
-  console.log(
-    `shieldlabs_summarize_entity: ${summary.entity.identifications} identifications reported`,
-  );
+  console.log(`shieldlabs_get_history: ${summary.entity.identifications} identifications reported`);
 
   const explanation = json(
     await client.callTool({

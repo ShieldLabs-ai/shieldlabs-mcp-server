@@ -1,9 +1,13 @@
-import { NIL_UUID, ShieldLabs, type Identification } from '@shieldlabs-ai/node';
+import { fromHistoryRow, NIL_UUID, type Identification } from '@shieldlabs-ai/node';
 import { z } from 'zod';
 import { bandInfo, bandOf, bandRange, RATE_LIMIT_MARKER_NOTE } from './catalog/bands.js';
 import { connectionTypeInfo } from './catalog/connection-types.js';
 import { DETECTION_FLAG_KEYS, detectionFlagInfo } from './catalog/detection-flags.js';
-import { riskSignalInfo, UNKNOWN_SIGNAL_MEANING } from './catalog/risk-signals.js';
+import {
+  canonicalSignalName,
+  riskSignalInfo,
+  UNKNOWN_SIGNAL_MEANING,
+} from './catalog/risk-signals.js';
 import { CHARACTER_LIMIT } from './constants.js';
 import {
   currentFlags,
@@ -101,11 +105,9 @@ export function fromIdentification(identification: Identification): ExplainInput
   };
 }
 
-const HISTORY_PLACEHOLDER_KEY = 'sec_00000000-00000000-00000000';
-
 /**
  * Normalizes one raw History API row with the SDK's own History normalizer (signal slugs from
- * score_details, flags from the is_* columns), by serving the row from memory: no network access.
+ * score_details, flags from the is_* columns). No network access.
  */
 /** Entity History card: `id` plus `risk`, not the old snapshot columns `request_id` and `score`. */
 function entityRisk(row: JsonObject): { id: string; score: number | null } | null {
@@ -116,30 +118,17 @@ function entityRisk(row: JsonObject): { id: string; score: number | null } | nul
   return { id, score: row.risk.score };
 }
 
-export async function normalizeHistoryRow(row: JsonObject): Promise<Identification> {
+export function normalizeHistoryRow(row: JsonObject): Identification {
   // History has used both names for the same identifier. Adapt the wire row before the
   // pinned SDK normalizes it; never infer an ID from the search argument.
   const card = entityRisk(row);
   const requestId =
     optionalString(row.identification_id) || optionalString(row.request_id) || card?.id || '';
   const wire: JsonObject = { ...row, identification_id: requestId };
-  // The pinned SDK reads a top-level score. Copy a known entity score across.
+  // The SDK normalizer reads a top-level score. Copy a known entity score across.
   // An unavailable risk has no score; leaving it absent is handled after normalization.
   if (card !== null && card.score !== null) wire.score = card.score;
-  const offline = new ShieldLabs({
-    apiKey: HISTORY_PLACEHOLDER_KEY,
-    baseUrl: 'http://127.0.0.1',
-    maxRetries: 0,
-    fetch: () =>
-      Promise.resolve({
-        status: 200,
-        ok: true,
-        headers: { get: () => null },
-        text: () => Promise.resolve(JSON.stringify({ data: [wire], total: 1 })),
-      }),
-  });
-  const page = await offline.history.search('request_id', NIL_UUID, { limit: 1 });
-  return { ...(page.data[0] as Identification), identification_id: requestId };
+  return { ...fromHistoryRow(wire), identification_id: requestId };
 }
 
 function optionalString(value: unknown): string | null {
@@ -185,7 +174,7 @@ function fromNormalizedObject(obj: JsonObject, source: ExplainInput['source']): 
  * Accepts the shapes a user is likely to paste: a normalized identification (from this server or
  * a ShieldLabs server SDK), a webhook event or its `data` object, or a raw History API row.
  */
-export async function parseIdentificationInput(input: unknown): Promise<ExplainInput> {
+export function parseIdentificationInput(input: unknown): ExplainInput {
   let value = input;
   if (typeof value === 'string') {
     try {
@@ -219,7 +208,16 @@ export async function parseIdentificationInput(input: unknown): Promise<ExplainI
     obj = obj.identification;
   }
 
-  if ('risk_score' in obj) return fromNormalizedObject(obj, source);
+  if ('risk_score' in obj) {
+    const parsed = fromNormalizedObject(obj, source);
+    // Keep normalized flags, identity and context; only recover missing weights from the row.
+    if (parsed.signals.length === 0 && 'score_details' in obj) {
+      const details = fromIdentification(normalizeHistoryRow({ ...obj, score: parsed.risk_score }));
+      for (const signal of details.signals) checkWeight(signal.weight, 'Every score_details Value');
+      parsed.signals = details.signals;
+    }
+    return parsed;
+  }
   if ('score' in obj || 'score_details' in obj) {
     // Every History row carries its score; a missing score is unknown, not a Risk Score of 0.
     if (!('score' in obj)) {
@@ -228,7 +226,7 @@ export async function parseIdentificationInput(input: unknown): Promise<ExplainI
       );
     }
     checkRiskScore(obj.score, 'score');
-    const input = fromIdentification(await normalizeHistoryRow(obj));
+    const input = fromIdentification(normalizeHistoryRow(obj));
     for (const signal of input.signals) checkWeight(signal.weight, 'Every score_details Value');
     return input;
   }
@@ -304,7 +302,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
   };
   const signals = input.signals.slice(0, shown).map((signal) => {
     const info = riskSignalInfo(signal.name);
-    const { text: name, cut } = bound(signal.name, MAX_SIGNAL_NAME_LENGTH);
+    const { text: name, cut } = bound(canonicalSignalName(signal.name), MAX_SIGNAL_NAME_LENGTH);
     if (cut) longNames += 1;
     return {
       name,
@@ -336,7 +334,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
     );
   if (band === 'rate_limited') {
     notes.push(
-      'The 999 marker is not a Risk Score. Its signal can be banned_ip in the current contract or rate_limited in an older profile; it only marks the ban.',
+      'The 999 marker is outside the 0-100 Risk Score scale. rate_limited indicates that the identification rate limit was exceeded.',
     );
   }
   if (input.flags.search_bot === true) {
@@ -350,7 +348,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
       'Some risk signal names are not in this server catalog (newer or less common risk signals). Their weights still counted.',
     );
   }
-  const names = input.signals.map((s) => s.name);
+  const names = input.signals.map((s) => canonicalSignalName(s.name));
   if (new Set(names).size < names.length) {
     notes.push(
       'A risk signal name can repeat: an earlier result for the same device and IP address can be carried forward with a partial weight, and a late network check adds a correction.',

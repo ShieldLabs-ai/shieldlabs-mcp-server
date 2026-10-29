@@ -26,16 +26,6 @@ export interface RiskSignalInfo {
  */
 export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
   {
-    slug: 'banned_ip',
-    label: 'Banned IP',
-    group: 'marker',
-    typical_weight: null,
-    related_flag: 'banned_ip',
-    meaning: 'The backend reports the IP as banned.',
-    reading:
-      'Use the returned risk state and score. This flag alone does not establish a numeric weight or a 999 marker.',
-  },
-  {
     slug: 'tor',
     label: 'Tor',
     group: 'network',
@@ -161,7 +151,7 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
   },
   {
     slug: 'private_relay',
-    label: 'Private Relay',
+    label: 'Privacy Relay',
     group: 'network',
     typical_weight: 15,
     related_flag: 'private_relay',
@@ -208,22 +198,43 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     reading: 'A light location signal that can be innocent (travel), so weigh it with the rest.',
   },
   {
+    slug: 'latency_test',
+    label: 'Latency test',
+    group: 'network',
+    typical_weight: 60,
+    related_flag: 'latency_test',
+    meaning: 'The network latency test indicates a relayed connection.',
+    reading: 'Use the returned weight; do not infer a latency threshold from this signal.',
+  },
+  {
     slug: 'rate_limited',
-    label: 'Rate-limit marker',
+    label: 'Rate limited',
     group: 'marker',
     typical_weight: 999,
-    related_flag: null,
+    related_flag: 'rate_limited',
     meaning:
-      'Not a risk signal: it comes with the 999 marker written when the visitor IP was temporarily banned after too many identifications.',
+      'The address is restricted for exceeding the request rate. The separate value 999 is outside the 0-100 Risk Score scale.',
     reading:
       '999 is not a Risk Score and not a band. Skip this entry when you log or count risk signals.',
   },
 ];
 
+const SIGNAL_ALIASES = new Map([
+  ['privacy_relay', 'private_relay'],
+  ['stun_not_checked', 'network_check_incomplete'],
+  ['ws_tcp_latency', 'latency_test'],
+  ['banned_ip', 'rate_limited'],
+]);
+
+/** Canonical public names for display; never applied to signed raw webhook bytes. */
+export function canonicalSignalName(name: string): string {
+  return SIGNAL_ALIASES.get(name) ?? name;
+}
+
 const BY_SLUG = new Map(RISK_SIGNAL_CATALOG.map((info) => [info.slug, info]));
 
 export function riskSignalInfo(slug: string): RiskSignalInfo | undefined {
-  return BY_SLUG.get(slug);
+  return BY_SLUG.get(canonicalSignalName(slug));
 }
 
 /** Explanation used for a signal name this catalog does not know. */
