@@ -225,7 +225,7 @@ function verifyMarkdown(output: VerifyOutput): string {
       lines.push(`- Identification ID: ${code(event.identification_id)}`);
     if (event.risk_score !== null) {
       lines.push(
-        `- Risk Score: ${event.risk_score}${event.risk_band === 'rate_limited' ? ' (rate-limit marker, not a Risk Score)' : ` (${event.risk_band})`}`,
+        `- Risk Score: ${event.risk_score}${event.risk_band === 'banned_ip' ? ' (rate-limit marker, not a Risk Score)' : ` (${event.risk_band})`}`,
       );
     }
   }

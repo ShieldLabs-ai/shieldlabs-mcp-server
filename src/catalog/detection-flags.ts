@@ -15,7 +15,7 @@ export const CURRENT_DETECTION_FLAG_KEYS = [
   'latency_test',
   'anti_detect_browser',
   'device_spoofing',
-  'rate_limited',
+  'banned_ip',
   'incognito',
   'search_bot',
   'ai_bot',
@@ -61,8 +61,8 @@ export const DETECTION_FLAG_CATALOG: readonly DetectionFlagInfo[] = [
     meaning: 'The backend reported device-spoofing evidence.',
   },
   {
-    flag: 'rate_limited',
-    label: 'Rate limited',
+    flag: 'banned_ip',
+    label: 'Banned IP',
     scored: false,
     meaning:
       'The address is restricted for exceeding the request rate; 999 is outside the Risk Score scale.',

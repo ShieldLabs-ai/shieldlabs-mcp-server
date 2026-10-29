@@ -157,7 +157,7 @@ const FLAG_NAMES = [
   'ip_mismatch',
   'latency_test',
   'device_spoofing',
-  'rate_limited',
+  'banned_ip',
   'ai_bot',
   'ai_browser',
 ] as const;

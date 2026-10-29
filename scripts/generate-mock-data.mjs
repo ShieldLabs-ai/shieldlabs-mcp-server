@@ -39,7 +39,7 @@ const SIGNALS = {
   timezone: ['Browser timezone ≠ IP-timezone', 10, 'is_timezone_mismatch'],
   stun: ['Stun is not checked', 30, 'is_stun_not_checked'],
   bvp: ['Browser VPN/Proxy', 30, null],
-  rate_limited: ['User has been banned 1H, to many requests', 999, null],
+  banned_ip: ['User has been banned 1H, to many requests', 999, null],
 };
 
 const FLAG_COLUMNS = [
@@ -60,16 +60,6 @@ const FLAG_COLUMNS = [
   'is_incognito',
   'is_search_bot',
 ];
-
-const PAID_CHANNELS = new Set([
-  'Google Ads',
-  'Meta',
-  'TikTok',
-  'LinkedIn',
-  'X',
-  'Pinterest',
-  'Microsoft Ads',
-]);
 
 function pad(n, width = 2) {
   return String(n).padStart(width, '0');
@@ -124,7 +114,7 @@ export function buildRows() {
       if (column !== null) flags[column] = true;
       return { Value: weight, Description: description };
     });
-    const rateLimited = signals.includes('rate_limited');
+    const rateLimited = signals.includes('banned_ip');
     const sum = details.reduce((total, detail) => total + detail.Value, 0);
     const score = searchBot ? 0 : rateLimited ? 999 : Math.min(100, sum);
     flags.is_incognito = incognito;
@@ -179,7 +169,6 @@ export function buildRows() {
       if (reason) row.traffic_reason = reason;
       if (referrer) row.referrer_domain = referrer;
       if (click) row.click_id_type = click;
-      if (channel && PAID_CHANNELS.has(channel) && score >= 60) row.is_suspicious_paid_click = true;
     }
     rows.push(row);
     return row;
@@ -476,7 +465,7 @@ export function buildRows() {
       os: 'Unknown',
       browser: 'Unknown',
       connection: 'unknown',
-      signals: ['rate_limited'],
+      signals: ['banned_ip'],
     });
   }
 

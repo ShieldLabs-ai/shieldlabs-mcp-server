@@ -32,7 +32,7 @@ export function currentFlags(
     latency_test: ['is_latency_test', 'is_ws_tcp_latency', 'ws_tcp_latency'],
     anti_detect_browser: ['is_antidetect'],
     device_spoofing: ['is_device_spoof', 'is_device_spoofing'],
-    rate_limited: ['banned_ip', 'is_rate_limited', 'is_banned_ip'],
+    banned_ip: [],
     incognito: ['is_incognito'],
     search_bot: ['is_search_bot'],
     ai_bot: ['is_ai_bot'],
@@ -52,8 +52,8 @@ export function currentFlags(
   if (history && (raw.connection_type === 'browser_vpn_proxy' || raw.is_browser_vpn_proxy === true))
     result.vpn = true;
   if (history && raw.is_os_mismatch2 === true) result.os_mismatch = true;
-  if (result.rate_limited === null && (raw.score === 999 || raw.risk_score === 999))
-    result.rate_limited = true;
+  if (result.banned_ip === null && (raw.score === 999 || raw.risk_score === 999))
+    result.banned_ip = true;
   return result;
 }
 

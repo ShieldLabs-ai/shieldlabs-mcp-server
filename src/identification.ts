@@ -27,7 +27,7 @@ const flagShape = Object.fromEntries(
   ]),
 ) as Record<(typeof CURRENT_DETECTION_FLAG_KEYS)[number], z.ZodNullable<z.ZodBoolean>>;
 
-export const RiskBandSchema = z.enum(['trusted', 'suspicious', 'dangerous', 'rate_limited']);
+export const RiskBandSchema = z.enum(['trusted', 'suspicious', 'dangerous', 'banned_ip']);
 
 /** More risk signals than this on one identification only come from a malformed payload. */
 export const MAX_SIGNALS_PER_IDENTIFICATION = 50;

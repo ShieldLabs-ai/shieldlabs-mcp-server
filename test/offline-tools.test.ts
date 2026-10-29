@@ -105,7 +105,7 @@ describe('shieldlabs_explain_risk_score', () => {
     const marker = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
       identification: rateLimited,
     });
-    expect(marker.risk_band).toBe('rate_limited');
+    expect(marker.risk_band).toBe('banned_ip');
     expect(marker.band_range).toBe('above 100 (999)');
     expect(marker.band_meaning).toContain('not a Risk Score and not a band');
     expect(marker.notes.join(' ')).toContain('all-zero device ID');
@@ -128,6 +128,34 @@ describe('shieldlabs_explain_risk_score', () => {
       }),
     );
     expect(crawlerText).toContain('Detailed signal weights are unavailable');
+  });
+
+  it('reads score_details when risk_score is set and signals are empty', async () => {
+    connected = await connect({});
+    const row = {
+      ...historyPage.data[0],
+      risk_score: 30,
+      score: 30,
+      signals: [],
+      score_details: '[{"Value":30,"Description":"Is VPN"}]',
+    };
+    const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      identification: row,
+    });
+    expect(output.risk_score).toBe(30);
+    expect(output.risk_band).toBe('suspicious');
+    expect(
+      output.signals.map((signal: { name: string; weight: number }) => [
+        signal.name,
+        signal.weight,
+      ]),
+    ).toEqual([['vpn', 30]]);
+    const markdown = textOf(
+      await callTool(connected.client, TOOL_NAMES.explainRiskScore, { identification: row }),
+    );
+    expect(markdown).toContain('| VPN (`vpn`) | +30 |');
+    expect(markdown).not.toContain('nothing added to the Risk Score');
+    expect(markdown).not.toContain('Detailed signal weights are unavailable');
   });
 
   it('recovers score_details without requiring score or losing normalized context', async () => {
@@ -563,7 +591,7 @@ describe('shieldlabs_verify_webhook_signature', () => {
       });
       expect(output.event.risk_score).toBe(score);
       expect(output.event.risk_band).toBe(
-        score === 999 ? 'rate_limited' : score === 0 ? 'trusted' : 'dangerous',
+        score === 999 ? 'banned_ip' : score === 0 ? 'trusted' : 'dangerous',
       );
       expect(output.checks.map((c: any) => c.check)).toEqual([
         'header_format',

@@ -249,7 +249,7 @@ export function summarize(items: readonly IdentificationOutput[]): Summary {
     }
     if (item.risk_score !== null) {
       const band = bandOf(item.risk_score);
-      if (band === 'rate_limited') {
+      if (band === 'banned_ip') {
         rateLimitMarkers++;
       } else {
         bandCounts[band]++;

@@ -77,7 +77,7 @@ describe('current public contract projection', () => {
       ai_bot: true,
       device_spoofing: null,
       os_mismatch: true,
-      rate_limited: true,
+      banned_ip: true,
     });
     expect(
       currentFlags({ detection_flags: { privacy_relay: true, stun_not_checked: false } }),

@@ -209,6 +209,7 @@ for (const mode of ['stdio', 'hosted'] as const)
           expect(calls).toHaveLength(0);
         }));
     for (const input of [
+      { rate_limited: true },
       { sort: 'created_at' },
       { chips: [{ dimension: 'browser', value: 'Chrome' }] },
       { hre_min_accounts: 2 },
@@ -250,6 +251,7 @@ for (const mode of ['stdio', 'hosted'] as const)
             hre_min_accounts: 3,
             hre_min_devices: 4,
             is_vpn: true,
+            banned_ip: false,
             response_format: 'json' as const,
           };
           const a = await client.callTool({ name: 'shieldlabs_list_history', arguments: args });
@@ -265,6 +267,8 @@ for (const mode of ['stdio', 'hosted'] as const)
           expect(url.searchParams.getAll('risk_bands')).toEqual(args.risk_bands);
           expect(url.searchParams.get('hre_min_accounts')).toBe('3');
           expect(url.searchParams.get('is_vpn')).toBe('true');
+          expect(url.searchParams.get('banned_ip')).toBe('false');
+          expect(url.searchParams.has('rate_limited')).toBe(false);
           expect(url.searchParams.has('filter')).toBe(false);
           expect(url.searchParams.get('from')).toBe(args.from);
         },

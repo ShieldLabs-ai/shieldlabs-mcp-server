@@ -332,9 +332,9 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
     notes.push(
       `Signals unavailable in this response (not negative detections): ${unknownFlags.join(', ')}.`,
     );
-  if (band === 'rate_limited') {
+  if (band === 'banned_ip') {
     notes.push(
-      'The 999 marker is outside the 0-100 Risk Score scale. rate_limited indicates that the identification rate limit was exceeded.',
+      'The 999 marker is outside the 0-100 Risk Score scale. banned_ip indicates that the identification rate limit was exceeded.',
     );
   }
   if (input.flags.search_bot === true) {
@@ -396,7 +396,7 @@ export function explain(input: ExplainInput, maxSignals = MAX_SIGNALS): Explanat
     risk_band: band,
     band_range: bandRange(band),
     band_meaning:
-      band === 'rate_limited'
+      band === 'banned_ip'
         ? RATE_LIMIT_MARKER_NOTE
         : `${bandInfo(band).meaning} Typical handling: ${lowerFirst(bandInfo(band).typical_handling)}`,
     ...input.metadata,
@@ -431,7 +431,7 @@ export function buildExplanation(input: ExplainInput): {
 
 export function explanationMarkdown(explanation: Explanation): string {
   const heading =
-    explanation.risk_band === 'rate_limited'
+    explanation.risk_band === 'banned_ip'
       ? `# Rate-limit marker ${explanation.risk_score} (not a Risk Score)`
       : `# Risk Score ${explanation.risk_score}: ${explanation.risk_band} (${explanation.band_range})`;
   const lines = [heading, ''];

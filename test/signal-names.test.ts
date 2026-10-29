@@ -18,7 +18,6 @@ const aliases = [
   ['privacy_relay', 'private_relay', 'Privacy Relay'],
   ['stun_not_checked', 'network_check_incomplete', 'Network Check Incomplete'],
   ['ws_tcp_latency', 'latency_test', 'Latency test'],
-  ['banned_ip', 'rate_limited', 'Rate limited'],
 ] as const;
 
 describe('canonical public signal names', () => {
@@ -26,8 +25,8 @@ describe('canonical public signal names', () => {
     'accepts %s while projecting %s in JSON and Markdown',
     async (legacy, name, label) => {
       const input = {
-        risk_score: name === 'rate_limited' ? 999 : 30,
-        signals: [{ name: legacy, weight: name === 'rate_limited' ? 999 : 30 }],
+        risk_score: 30,
+        signals: [{ name: legacy, weight: 30 }],
         detection_flags: { [legacy]: true },
       };
       const before = JSON.stringify(input);
@@ -83,7 +82,9 @@ describe('canonical public signal names', () => {
       expect(RISK_SIGNALS_REFERENCE.detection_flags).toContainEqual(
         expect.objectContaining({ flag: name, label }),
       );
-      expect(RISK_SIGNALS_REFERENCE.detection_flags.some((s) => s.flag === legacy)).toBe(false);
+      expect(RISK_SIGNALS_REFERENCE.detection_flags.some((s) => String(s.flag) === legacy)).toBe(
+        false,
+      );
       expect(riskSignalInfo(legacy)?.slug).toBe(name);
     }
     expect(RISK_SIGNALS_REFERENCE.detection_flags).toHaveLength(20);
@@ -106,14 +107,13 @@ describe('canonical public signal names', () => {
     });
   });
 
-  it('keeps an explicit negative rate-limit flag even with the 999 marker', () => {
-    expect(currentFlags({ risk_score: 999 }).rate_limited).toBe(true);
-    expect(
-      currentFlags({ risk_score: 999, detection_flags: { rate_limited: false, banned_ip: true } })
-        .rate_limited,
-    ).toBe(false);
-    expect(currentFlags({ is_banned_ip: true }).rate_limited).toBe(true);
-    expect(currentFlags({ is_rate_limited: false }).rate_limited).toBe(false);
+  it('keeps an explicit negative Banned IP flag even with the 999 marker', () => {
+    expect(currentFlags({ risk_score: 999 }).banned_ip).toBe(true);
+    expect(currentFlags({ risk_score: 999, detection_flags: { banned_ip: false } }).banned_ip).toBe(
+      false,
+    );
+    expect(currentFlags({ is_banned_ip: true }).banned_ip).toBeNull();
+    expect(currentFlags({ is_rate_limited: false }).banned_ip).toBeNull();
   });
 
   it('validates current 20-flag wire payloads and preserves signed bytes', async () => {
@@ -131,9 +131,9 @@ describe('canonical public signal names', () => {
     event.data.detection_flags = Object.fromEntries(
       CURRENT_DETECTION_FLAG_KEYS.map((name) => [name, false]),
     );
-    event.data.detection_flags.rate_limited = true;
+    event.data.detection_flags.banned_ip = true;
     event.data.risk_score = 999;
-    event.data.signals = [{ name: 'rate_limited', weight: 999 }];
+    event.data.signals = [{ name: 'banned_ip', weight: 999 }];
     const validate = new Ajv2020({ strict: false, validateFormats: false }).compile(
       WEBHOOK_EVENT_SCHEMA,
     );
@@ -149,7 +149,7 @@ describe('canonical public signal names', () => {
         secret,
       });
       expect(result.valid).toBe(true);
-      expect(result.event.risk_band).toBe('rate_limited');
+      expect(result.event.risk_band).toBe('banned_ip');
       const changed = await callJson(connected.client, TOOL_NAMES.verifyWebhookSignature, {
         payload: payload.trimEnd(),
         signature_header,
@@ -183,11 +183,12 @@ describe('entity signal names', () => {
       'private_relay',
       'network_check_incomplete',
       'latency_test',
-      'rate_limited',
+      'banned_ip',
       'future_signal',
     ]);
     expect(entityMarkdown(entity)).toContain('`private_relay`');
-    expect(entityMarkdown(entity)).not.toContain('`banned_ip`');
+    expect(entityMarkdown(entity)).toContain('`banned_ip`');
+    expect(entityMarkdown(entity)).not.toContain('`rate_limited`');
     expect(JSON.stringify(source)).toBe(before);
   });
 });

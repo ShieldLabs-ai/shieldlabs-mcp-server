@@ -4,7 +4,7 @@ import { mkdirSync, existsSync, readFileSync, rmSync, cpSync, copyFileSync } fro
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const ref = 'd5b92346ce65df3eb0c0476e92fbc02d8306df32';
+const ref = 'af2a6413b4a112ae063597af00cdb8344d677fcd';
 const folder = resolve(root, '.deps/shieldlabs-node');
 function run(command, args, cwd = root, capture = false) {
   const r = spawnSync(command, args, {
