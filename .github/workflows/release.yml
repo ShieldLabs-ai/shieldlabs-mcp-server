@@ -50,6 +50,13 @@ jobs:
       # dist/ is built and bundles @shieldlabs-ai/node: pack it without running the build again.
       - run: npm pack --ignore-scripts
 
+      - name: Install and smoke-test the actual archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/mcp-install" --ignore-scripts "$(pwd)/shieldlabs-ai-mcp-${VERSION}.tgz"
+          SHIELDLABS_MCP_SMOKE_ENTRY="$RUNNER_TEMP/mcp-install/node_modules/@shieldlabs-ai/mcp/dist/index.js" npm run smoke
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: package

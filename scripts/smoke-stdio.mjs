@@ -17,7 +17,9 @@ import {
   MOCK_SECRET_KEY,
 } from './mock-history-api.mjs';
 
-const entry = fileURLToPath(new URL('../dist/index.js', import.meta.url));
+const entry =
+  process.env.SHIELDLABS_MCP_SMOKE_ENTRY ||
+  fileURLToPath(new URL('../dist/index.js', import.meta.url));
 
 async function startMockApi() {
   const api = createMockApi(loadDataset());
