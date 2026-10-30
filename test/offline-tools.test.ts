@@ -752,6 +752,7 @@ describe('entity recorded signal weights', () => {
   it('reads API weights and returns the same pairs through Get and Explain', async () => {
     const fetch = async (input: any) => {
       const u = new URL(String(input));
+      expect(u.pathname).toBe(`/api/v1/domains/${domain}/history/identifications/${id}`);
       return new Response(JSON.stringify({ data: { ...card, scored_signals: weights } }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
