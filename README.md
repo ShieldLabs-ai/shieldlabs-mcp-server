@@ -240,3 +240,11 @@ Support: [contact@shieldlabs.ai](mailto:contact@shieldlabs.ai).
 
 [MIT](LICENSE)
 
+
+### Recorded signal weights
+
+Identification detail cards may include `scored_signals: [{ name, weight }]`, using
+the recorded webhook-shaped weights of that exact result revision. Get tools preserve
+these pairs, and Explain uses them when present. Missing/null weights are unavailable;
+an empty array is a known empty list. Existing `signals.items` names remain unchanged.
+The API Risk Score is authoritative; weights are not added up or replaced with catalog values.

@@ -730,3 +730,83 @@ describe('shieldlabs_current_time', () => {
     expect(textOf(result)).toContain('Europe/Berlin');
   });
 });
+
+describe('entity recorded signal weights', () => {
+  const id = '33333333-3333-4333-8333-333333333333',
+    domain = '11111111-1111-4111-8111-111111111111';
+  const weights = [
+    { name: 'proxy', weight: 30 },
+    { name: 'ip_mismatch', weight: 45 },
+    { name: 'os_mismatch', weight: 60 },
+    { name: 'incognito', weight: 0 },
+    { name: 'correction', weight: -15 },
+  ];
+  const card = {
+    type: 'identification',
+    id,
+    domain_id: domain,
+    domain: 'example.com',
+    risk: { state: 'ok', band: 'dangerous', score: 60, as_of: '2026-10-30T12:00:00Z' },
+    signals: { state: 'ok', items: ['proxy', 'ip_mismatch', 'os_mismatch'] },
+  };
+  it('reads API weights and returns the same pairs through Get and Explain', async () => {
+    const fetch = async (input: any) => {
+      const u = new URL(String(input));
+      return new Response(JSON.stringify({ data: { ...card, scored_signals: weights } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    connected = await connect(FULL_ENV, { apiFetch: fetch });
+    const found = await callJson(connected.client, TOOL_NAMES.getIdentification, {
+      domain,
+      identification_id: id,
+      response_format: 'json',
+    });
+    expect(found.identification.scored_signals).toEqual(weights);
+    const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      domain,
+      identification_id: id,
+      response_format: 'json',
+    });
+    expect(output.weights_available).toBe(true);
+    expect(output.scored_signals).toEqual(weights);
+    expect(output.risk_score).toBe(60);
+    expect(output.signals.map((s: any) => ({ name: s.name, weight: s.weight }))).toEqual(weights);
+  });
+  it('uses recorded weights in Markdown without summing them or substituting catalog weights', async () => {
+    connected = await connect({});
+    const text = textOf(
+      await callTool(connected.client, TOOL_NAMES.explainRiskScore, {
+        identification: { ...card, scored_signals: weights },
+        response_format: 'markdown',
+      }),
+    );
+    expect(text).toContain('60');
+    expect(text).toContain('45');
+    expect(text).not.toContain('Detailed signal weights are unavailable');
+  });
+  it('distinguishes unavailable from known empty weights and preserves unknown risk', async () => {
+    connected = await connect({});
+    for (const weights of [undefined, null]) {
+      const out = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+        identification: { ...card, scored_signals: weights },
+      });
+      expect(out.weights_available).toBe(false);
+    }
+    const empty = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      identification: { ...card, scored_signals: [] },
+    });
+    expect(empty.weights_available).toBe(true);
+    expect(empty.signals).toEqual([]);
+    const unknown = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      identification: {
+        ...card,
+        risk: { state: 'unavailable', band: null, as_of: null },
+        scored_signals: weights,
+      },
+    });
+    expect(unknown.weights_available).toBe(false);
+    expect(unknown.risk_score).toBeUndefined();
+  });
+});
