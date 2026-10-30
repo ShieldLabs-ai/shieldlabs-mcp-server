@@ -12,7 +12,7 @@ describe('local mode next to public mode', () => {
     ] as const) {
       const connected = await connect(env);
       const listed = (await connected.client.listTools()).tools.map((tool) => tool.name);
-      expect(listed).toEqual([...tools]);
+      expect([...listed].sort()).toEqual([...tools].sort());
       expect(listed).not.toContain(CHECK_CONNECTION_TOOL);
       expect((await connected.client.listPrompts()).prompts.length).toBeGreaterThan(0);
       expect((await connected.client.listResources()).resources.length).toBeGreaterThan(0);

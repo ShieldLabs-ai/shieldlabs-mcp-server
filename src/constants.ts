@@ -29,7 +29,7 @@ export const PROFILE_CACHE_MS = 60_000;
  * release this server version was tested with: later commits to the skills repository never
  * reach installed servers.
  */
-export const SETUP_SKILL_REF = 'refs/tags/v1.1.0';
+export const SETUP_SKILL_REF = 'refs/tags/v1.3.1';
 export const SETUP_SKILL_URL = `https://raw.githubusercontent.com/ShieldLabs-ai/skills/${SETUP_SKILL_REF}/skills/shieldlabs-setup/SKILL.md`;
 export const SETUP_SKILL_TIMEOUT_MS = 3_000;
 export const SETUP_SKILL_CACHE_MS = 60 * 60 * 1000;
@@ -45,8 +45,8 @@ export const MAX_HTTP_BODY_BYTES = 1_000_000;
 /** Tool names. Every tool is read-only and prefixed with shieldlabs_. */
 export const TOOL_NAMES = {
   getIdentification: 'shieldlabs_get_identification',
-  searchHistory: 'shieldlabs_search_history',
-  summarizeEntity: 'shieldlabs_summarize_entity',
+  listHistory: 'shieldlabs_list_history',
+  getHistory: 'shieldlabs_get_history',
   explainRiskScore: 'shieldlabs_explain_risk_score',
   getDomainProfile: 'shieldlabs_get_domain_profile',
   verifyWebhookSignature: 'shieldlabs_verify_webhook_signature',
@@ -67,23 +67,15 @@ export const OFFLINE_TOOL_NAMES: readonly ToolName[] = [
 /** Tools that read the History API and need SHIELDLABS_API_KEY. */
 export const HISTORY_TOOL_NAMES: readonly ToolName[] = [
   TOOL_NAMES.getIdentification,
-  TOOL_NAMES.searchHistory,
-  TOOL_NAMES.summarizeEntity,
+  TOOL_NAMES.listHistory,
+  TOOL_NAMES.getHistory,
 ];
 
-/** Identifier types the History API can search by. */
-export const LOOKUP_TYPES = [
-  'request_id',
-  'user_hid',
-  'device_id',
-  'visitor_id',
-  'ip',
-  'session_id',
-  'cookie_id',
-] as const;
+/** History resources. Session and cookie are identification fields, not resources. */
+export const HISTORY_RESOURCES = ['identifications', 'user', 'visitor', 'device', 'ip'] as const;
 
-/** Identifier types that shieldlabs_summarize_entity aggregates. */
-export const ENTITY_TYPES = ['user_hid', 'device_id', 'visitor_id', 'ip', 'cookie_id'] as const;
+/** Lists in the first delivery. visitor, device and ip have a card, not a list. */
+export const HISTORY_LIST_RESOURCES = ['identifications', 'user'] as const;
 
 /** User HID values that do not name an account: anonymous checks and agent sentinels. */
 export const NON_ACCOUNT_USER_HIDS: ReadonlySet<string> = new Set([

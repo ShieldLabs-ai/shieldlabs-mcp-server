@@ -8,8 +8,8 @@ export const IDENTIFICATION_SCHEMA = {
   $id: 'shieldlabs://contract/identification',
   title: 'ShieldLabs MCP identification projection',
   description:
-    '20 detection flags (null when unavailable) and optional bounded HRE/client identity. The wire identifier identification_id is exposed as request_id for MCP compatibility.',
+    '20 detection flags (null when unavailable) and optional bounded HRE/client identity. The identifier is identification_id, the same field as the webhook.',
 };
 
-/** Public wire schema, pinned to shieldlabs-openapi 8af12c0. MCP outputs use request_id, wire uses identification_id. */
+/** Public wire schema, pinned to shieldlabs-openapi ea1898a. MCP outputs use identification_id, matching the webhook. */
 export const WEBHOOK_EVENT_SCHEMA = wireWebhookSchema;

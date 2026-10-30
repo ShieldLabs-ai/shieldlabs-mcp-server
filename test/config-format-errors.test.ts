@@ -52,7 +52,7 @@ describe('parseArgs', () => {
       '0.0.0.0',
       '--allowed-origins',
       'https://a.example/, http://localhost:3000',
-      '--tools=search_history,shieldlabs_current_time,search_history',
+      '--tools=list_history,shieldlabs_current_time,list_history',
       '--offline',
       '-h',
     ]);
@@ -61,7 +61,7 @@ describe('parseArgs', () => {
       port: 9000,
       host: '0.0.0.0',
       allowedOrigins: ['https://a.example', 'http://localhost:3000'],
-      tools: [TOOL_NAMES.searchHistory, TOOL_NAMES.currentTime],
+      tools: [TOOL_NAMES.listHistory, TOOL_NAMES.currentTime],
       offline: true,
       help: true,
     });

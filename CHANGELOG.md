@@ -1,26 +1,15 @@
 # Changelog
 
-## Unreleased : Public signal names
-
-- Use private_relay, network_check_incomplete, latency_test and rate_limited in MCP
-  projections and reference catalogs. Accept the previous signal names as input aliases.
-- Explain the 999 rate-limit marker consistently and refresh the public webhook schema
-  from OpenAPI 8af12c0 without changing raw signed payloads or their signature verification.
-
-## Unreleased : History filters
-
-- Add optional AND-only UTC date, raw-score and 17 boolean History constraints to search and
-  entity summaries, with filtered scope in JSON/Markdown and unchanged unfiltered behavior.
-- Forward constraints through the SDK HTTP adapter and signed OAuth requests on every page;
-  validate calendar dates, ranges and strict boolean values without changing authentication.
-
-
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-10-28
+## [1.1.0] - 2026-10-30
 
+- Bundle published Node SDK 1.3.2 with lockfile integrity verification.
+- Accept one User HID string in ids and remove unsupported relation parameters.
+- Describe group webhook delivery independently of the stored multiaccount setting.
+- Pin the setup skill to the public skills v1.3.1 release.
 - Cover the current twenty public flags without inventing false values for missing fields;
   retain legacy compatibility keys, current identification IDs, bounded HRE and scoped identity.
 - Add multiaccount webhook creation/patch/read support through the signed public API only.

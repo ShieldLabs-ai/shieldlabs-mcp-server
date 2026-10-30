@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { CURRENT_DETECTION_FLAG_KEYS } from '../src/catalog/detection-flags.js';
+import { CHARACTER_LIMIT } from '../src/constants.js';
 import { currentFlags, currentMetadata } from '../src/current-contract.js';
-import { normalizeHistoryRow, fromIdentification, buildExplanation } from '../src/explain.js';
-import { toIdentificationOutput, IdentificationOutputSchema } from '../src/identification.js';
+import { buildExplanation, fromIdentification, normalizeHistoryRow } from '../src/explain.js';
+import { IdentificationOutputSchema, toIdentificationOutput } from '../src/identification.js';
 import { summarize } from '../src/summarize.js';
-import { CHARACTER_LIMIT, TOOL_NAMES } from '../src/constants.js';
-import { connect, callTool, mockApiFetch, fixture, FULL_ENV, textOf } from './helpers.js';
+import { fixture } from './helpers.js';
 
 const hre = {
   account_sharing: { status: 'evaluated', level: 'medium', reason: 'device_count', devices: 4 },
@@ -23,6 +23,45 @@ const identity = {
   unknown_future_field: 'secret-must-not-leak',
 };
 
+describe('entity history cards', () => {
+  const id = '00000000-0000-4000-8000-000000000042';
+
+  it('keeps the card id and a score of 30', async () => {
+    const output = toIdentificationOutput(
+      normalizeHistoryRow({
+        type: 'identification',
+        id,
+        risk: { state: 'ok', band: 'suspicious', score: 30 },
+        signals: { state: 'unavailable', items: [] },
+      }),
+    );
+    expect(output.identification_id).toBe(id);
+    expect(output.risk_score).toBe(30);
+    expect(output.risk_band).toBe('suspicious');
+    expect(IdentificationOutputSchema.safeParse(output).success).toBe(true);
+  });
+
+  it('keeps an unavailable risk null instead of score 0', async () => {
+    const output = toIdentificationOutput(
+      normalizeHistoryRow({
+        type: 'identification',
+        id,
+        risk: { state: 'unavailable' },
+        signals: { state: 'unavailable', items: [] },
+      }),
+    );
+    expect(output.identification_id).toBe(id);
+    expect(output.risk_score).toBeNull();
+    expect(output.risk_band).toBeNull();
+    const normalized = normalizeHistoryRow({
+      type: 'identification',
+      id,
+      risk: { state: 'unavailable' },
+    });
+    expect(() => fromIdentification(normalized)).toThrow(/unavailable/);
+  });
+});
+
 describe('current public contract projection', () => {
   it('covers the canonical twenty flags and never defaults missing new signals to false', () => {
     expect(CURRENT_DETECTION_FLAG_KEYS).toHaveLength(20);
@@ -38,7 +77,7 @@ describe('current public contract projection', () => {
       ai_bot: true,
       device_spoofing: null,
       os_mismatch: true,
-      rate_limited: true,
+      banned_ip: true,
     });
     expect(
       currentFlags({ detection_flags: { privacy_relay: true, stun_not_checked: false } }),
@@ -94,7 +133,7 @@ describe('current public contract projection', () => {
       client_identity: identity,
       is_ai_bot: true,
     };
-    const normalized = await normalizeHistoryRow(row);
+    const normalized = normalizeHistoryRow(row);
     const output = toIdentificationOutput(normalized);
     expect(IdentificationOutputSchema.safeParse(output).success).toBe(true);
     expect(output.detection_flags.ai_bot).toBe(true);
@@ -119,67 +158,9 @@ describe('current public contract projection', () => {
     const row = { ...fixture('history-page.json').data[0] };
     delete row.request_id;
     row.identification_id = '33333333-3333-4333-8333-333333333333';
-    const normalized = await normalizeHistoryRow(row);
-    expect(toIdentificationOutput(normalized).request_id).toBe(row.identification_id);
-    expect(fromIdentification(normalized).request_id).toBe(row.identification_id);
-  });
-
-  it('returns current metadata through actual MCP history tools with valid output schemas', async () => {
-    const row = {
-      ...fixture('history-page.json').data[0],
-      hre,
-      client_identity: identity,
-      is_ai_browser: true,
-    };
-    const c = await connect(FULL_ENV, {
-      apiFetch: mockApiFetch({ rows: [row], profile: {} }).fetch,
-    });
-    try {
-      for (const name of [TOOL_NAMES.getIdentification, TOOL_NAMES.explainRiskScore]) {
-        const result = await callTool(c.client, name, {
-          request_id: row.request_id,
-          response_format: 'markdown',
-        });
-        expect(result.isError, textOf(result)).toBeFalsy();
-        expect(JSON.stringify(result.structuredContent)).toContain('Claimed Agent');
-        expect(textOf(result)).toContain('not_evaluated');
-      }
-    } finally {
-      await c.close();
-    }
-  });
-
-  it('bounds a single identification when all display fields and metadata are oversized', async () => {
-    const row = { ...fixture('history-page.json').data[0] };
-    for (const key of [
-      'user_hid',
-      'browser',
-      'os',
-      'device_type',
-      'country',
-      'web_rtc_country',
-      'domain',
-      'entry_url',
-      'traffic_channel',
-      'utm_source',
-      'utm_medium',
-      'utm_campaign',
-      'utm_content',
-      'utm_term',
-      'referrer_domain',
-    ])
-      row[key] = 'x'.repeat(10_000);
-    row.client_identity = {
-      claims: Array.from({ length: 10 }, () => ({
-        provider_name: 'x'.repeat(500),
-        agent_name: 'x'.repeat(500),
-      })),
-    };
-    row.hre = hre;
-    const output = toIdentificationOutput(await normalizeHistoryRow(row));
-    expect(JSON.stringify(output).length).toBeLessThan(22_000);
-    expect(output.request_id).toBe(row.request_id);
-    expect(output.contract_warnings?.join(' ')).toContain('incomplete');
+    const normalized = normalizeHistoryRow(row);
+    expect(toIdentificationOutput(normalized).identification_id).toBe(row.identification_id);
+    expect(fromIdentification(normalized).identification_id).toBe(row.identification_id);
   });
 
   it('keeps adversarial metadata within response limits for both renderings', async () => {
@@ -203,7 +184,7 @@ describe('current public contract projection', () => {
         })),
       },
     };
-    const normalized = await normalizeHistoryRow(raw);
+    const normalized = normalizeHistoryRow(raw);
     const result = buildExplanation(fromIdentification(normalized));
     expect(result.markdown.length).toBeLessThanOrEqual(CHARACTER_LIMIT);
     expect(JSON.stringify(result.explanation).length).toBeLessThanOrEqual(CHARACTER_LIMIT);

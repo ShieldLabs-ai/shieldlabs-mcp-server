@@ -61,8 +61,7 @@
         "traffic_channel": "Google Ads",
         "traffic_channel_group": "Paid Search",
         "traffic_reason": "gclid_present",
-        "click_id_type": "gclid",
-        "is_suspicious_paid_click": true
+        "click_id_type": "gclid"
       },
       "expected": {
         "request_id": "02f1d973-84db-4156-a7f7-e799e6bf389b",
@@ -129,7 +128,6 @@
           "ip_mismatch": true,
           "incognito": false,
           "search_bot": false,
-          "suspicious_paid_click": true,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false
@@ -247,7 +245,6 @@
           "ip_mismatch": false,
           "incognito": true,
           "search_bot": false,
-          "suspicious_paid_click": false,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false
@@ -385,7 +382,6 @@
           "ip_mismatch": true,
           "incognito": false,
           "search_bot": false,
-          "suspicious_paid_click": false,
           "javascript_disabled": false,
           "stun_not_checked": true,
           "check_incomplete": true
@@ -482,7 +478,7 @@
         "risk_score": 999,
         "signals": [
           {
-            "name": "rate_limited",
+            "name": "banned_ip",
             "weight": 999,
             "description": "User has been banned 1H, to many requests"
           }
@@ -503,7 +499,6 @@
           "ip_mismatch": false,
           "incognito": false,
           "search_bot": false,
-          "suspicious_paid_click": false,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false
@@ -619,7 +614,6 @@
           "ip_mismatch": false,
           "incognito": false,
           "search_bot": true,
-          "suspicious_paid_click": false,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false
@@ -693,7 +687,6 @@
           "ip_mismatch": true,
           "incognito": false,
           "search_bot": false,
-          "suspicious_paid_click": true,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false
@@ -765,7 +758,6 @@
           "ip_mismatch": true,
           "incognito": false,
           "search_bot": false,
-          "suspicious_paid_click": true,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false
@@ -811,7 +803,7 @@
         "risk_score": 999,
         "signals": [
           {
-            "name": "rate_limited",
+            "name": "banned_ip",
             "weight": 999
           }
         ],
@@ -831,7 +823,6 @@
           "ip_mismatch": false,
           "incognito": false,
           "search_bot": false,
-          "suspicious_paid_click": false,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false
@@ -872,7 +863,7 @@
         "risk_score": 999,
         "signals": [
           {
-            "name": "rate_limited",
+            "name": "banned_ip",
             "weight": 999,
             "description": null
           }
@@ -893,7 +884,6 @@
           "ip_mismatch": false,
           "incognito": false,
           "search_bot": false,
-          "suspicious_paid_click": false,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false
@@ -922,7 +912,6 @@
           "privacy_relay": false,
           "proxy": true,
           "stun_not_checked": false,
-          "suspicious_paid_click": false,
           "timezone_mismatch": false,
           "tor": false,
           "vpn": false,
@@ -1037,7 +1026,6 @@
           "ip_mismatch": false,
           "incognito": false,
           "search_bot": false,
-          "suspicious_paid_click": false,
           "javascript_disabled": false,
           "stun_not_checked": false,
           "check_incomplete": false

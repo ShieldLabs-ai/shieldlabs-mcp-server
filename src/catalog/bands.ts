@@ -1,6 +1,6 @@
 import { riskBand, type RiskBand } from '@shieldlabs-ai/node';
 
-export type BandOrMarker = RiskBand | 'rate_limited';
+export type BandOrMarker = RiskBand | 'banned_ip';
 
 export interface RiskBandInfo {
   band: RiskBand;
@@ -62,7 +62,7 @@ export function worseBand(a: RiskBand | null, b: RiskBand): RiskBand {
 
 /** "60-100" for a band, "above 100" for the marker. */
 export function bandRange(band: BandOrMarker): string {
-  if (band === 'rate_limited') return 'above 100 (999)';
+  if (band === 'banned_ip') return 'above 100 (999)';
   const info = bandInfo(band);
   return `${info.min}-${info.max}`;
 }

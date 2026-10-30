@@ -207,11 +207,11 @@ export const RISK_SIGNAL_CATALOG: readonly RiskSignalInfo[] = [
     reading: 'Use the returned weight; do not infer a latency threshold from this signal.',
   },
   {
-    slug: 'rate_limited',
-    label: 'Rate limited',
+    slug: 'banned_ip',
+    label: 'Banned IP',
     group: 'marker',
     typical_weight: 999,
-    related_flag: 'rate_limited',
+    related_flag: 'banned_ip',
     meaning:
       'The address is restricted for exceeding the request rate. The separate value 999 is outside the 0-100 Risk Score scale.',
     reading:
@@ -223,7 +223,6 @@ const SIGNAL_ALIASES = new Map([
   ['privacy_relay', 'private_relay'],
   ['stun_not_checked', 'network_check_incomplete'],
   ['ws_tcp_latency', 'latency_test'],
-  ['banned_ip', 'rate_limited'],
 ]);
 
 /** Canonical public names for display; never applied to signed raw webhook bytes. */

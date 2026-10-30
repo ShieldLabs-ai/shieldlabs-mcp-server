@@ -221,17 +221,33 @@ describe('the Worker', () => {
     });
   });
 
-  it('pings for at most 300 new tokens per minute and address', async () => {
-    await withinOneWindow(async (address) => {
-      const from = (index: number) => ({
-        'cf-connecting-ip': address(1),
-        authorization: `Bearer slat_${String(index).padStart(43, 'q')}`,
+  it(
+    'pings for at most 300 new tokens per minute and address',
+    async () => {
+      await withinOneWindow(async (address) => {
+        const from = (index: number) => ({
+          'cf-connecting-ip': address(1),
+          authorization: `Bearer slat_${String(index).padStart(43, 'q')}`,
+        });
+        // Bounded parallel batches keep the real 300-request binding check within one window.
+        // Consume each response so completed requests do not retain their bodies in workerd.
+        // Invalid tokens also hit RL_ANON; only the upstream count proves the ping limit.
+        for (let start = 0; start < 300; start += 10) {
+          await Promise.all(
+            Array.from({ length: 10 }, async (_, offset) => {
+              const response = await post(INITIALIZE, from(start + offset));
+              await response.arrayBuffer();
+            }),
+          );
+        }
+        expect(upstream).toHaveLength(300);
+        const refused = await post(INITIALIZE, from(300));
+        await refused.arrayBuffer();
+        expect(refused.status).toBe(429);
+        expect(upstream).toHaveLength(300);
       });
-      for (let index = 0; index < 300; index++) await post(INITIALIZE, from(index));
-      expect(upstream).toHaveLength(300);
-      const refused = await post(INITIALIZE, from(300));
-      expect(refused.status).toBe(429);
-      expect(upstream).toHaveLength(300);
-    });
-  });
+      // withinOneWindow allows three real-minute attempts; CI can exceed the default 30 seconds.
+    },
+    3 * 60_000,
+  );
 });

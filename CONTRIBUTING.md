@@ -1,73 +1,42 @@
 # Contributing
 
-Thanks for helping improve the ShieldLabs MCP server. Questions and bug reports: open an issue or
-write to [contact@shieldlabs.ai](mailto:contact@shieldlabs.ai).
+Questions and bug reports: open an issue or write to contact@shieldlabs.ai.
 
-## Set up
+## Set up and validate
+
+Use Node.js 20 or newer (Node.js 22 or newer for Workers tests).
 
 ```bash
 npm ci
-(cd ../shieldlabs-node && npm ci && npm pack)   # until @shieldlabs-ai/node is published
-npm install --no-save ../shieldlabs-node/shieldlabs-ai-node-1.0.0.tgz
-```
-
-## Before you open a pull request
-
-```bash
+npm run bootstrap:sdk
 npm run typecheck
-npm run lint            # eslint and prettier --check
-npm test -- --coverage  # coverage must stay at or above 85 %
-npm run build && node dist/index.js --help
-npm run test:worker     # the hosted mode in the Workers runtime (Node.js 22 or later)
-npm run worker:check    # bundles the Worker without uploading it; no Node.js built-ins
+npm run lint
+npm test -- --coverage
+npm run test:worker
+npm run worker:check
+npm run build
+npm run smoke
+npm pack --ignore-scripts
 ```
 
-The CI workflow runs the commands above on Node.js 20, 22 and 24, plus the stdio smoke test
-(`npm run smoke`). It does not run the two Worker commands yet: run them yourself, on Node.js 22
-or later, before you open a pull request that touches `src/public/`, `src/worker.ts` or
-`wrangler.jsonc`. They do not need `@shieldlabs-ai/node`.
+The published Node SDK 1.3.2 is pinned in package.json and package-lock.json and bundled into dist. No sibling checkout or private repository token is required. CI tests Node.js 20, 22 and 24 and runs Workers checks separately. Worker bundle checks do not upload or deploy code.
 
 ## Guidelines
 
-- Tools stay read-only and prefixed with `shieldlabs_`. Every tool needs a zod input schema with
-  descriptions and bounds, an output schema, annotations and an actionable error for each failure.
-- Values that come from the API can contain text written by visitors. Render them with `code()` in
-  markdown, pass identifications through `toIdentificationOutput()` and other API strings through
-  `escapeInvisible()` before they reach any output, and bound their size.
-- Every History API request goes through the client built in `createContext()`, so it stays
-  within the process-wide request budget.
-- Never log or return keys or secrets.
-- Public mode (`src/public/`, `src/worker.ts`) accepts ShieldLabs access tokens (`slat_...`) only
-  and checks each one with `GET /mcp/v1/ping` of the account API, signed with `MCP_GATEWAY_KEY`
-  and a fresh nonce per request (`src/public/gateway.ts`; its test pins the signature vector of
-  the account API). It offers `shieldlabs_check_connection` only: the account API has no MCP data
-  methods yet, and access tokens are not accepted on the History API. API keys are a later step.
-- Code reachable from `src/worker.ts` runs on Cloudflare Workers: use Web APIs (`fetch`,
-  `crypto.subtle`, streams), not Node.js modules, and do not import `src/context.ts` or
-  `@shieldlabs-ai/node`; `npm run worker:check` fails on a Node.js import. Nothing may outlive a
-  request except the cache of accepted tokens, keyed by the SHA-256 of the token.
-- Tests use the shared fixtures in `test/fixtures/` and the mock dataset in `test/mock-data/`. Do
-  not edit either by hand: change `scripts/generate-mock-data.mjs` and run it.
-- Documentation style: plain technical English, "risk signals" for the weighted reasons behind a
-  score, and the three risk bands trusted 0-29, suspicious 30-59, dangerous 60-100.
-- Use conventional commit messages (`feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`).
+- Use only public API routes. Hosted OAuth exposes 21 tools; local API-key modes remain read-only. Keep all tool names prefixed with shieldlabs_.
+- Give each tool strict bounded inputs, output schemas, annotations and actionable errors. Destructive operations require confirmation and are not retried automatically.
+- Keep History reads domain-scoped. Preserve nullable fields and availability; do not invent risk, weights, counts or identity proof. RFC3339 windows are half-open; page tokens must retain the same query.
+- Treat API strings as untrusted data, escape invisible characters and bound output sizes. Never log keys, OAuth codes or secrets; credentials are masked by default.
+- Hosted requests use OAuth tokens and signed public /mcp/v1 calls. Keep gateway secrets in the deployment environment; do not expose private dashboard routes.
+- Code reachable from src/worker.ts uses Web APIs instead of Node.js modules. The worker bundle check enforces this. Keep token-cache entries scoped to the token hash.
+- Add tests using deterministic fixtures and the mock backend. Tests do not use customer keys or live mutations.
+- Use plain technical English and the three Risk Score bands: Trusted 0-29, Suspicious 30-59, Dangerous 60-100. High-Risk Events confidence is a separate axis.
+- Use conventional commit messages.
 
 ## Releases
 
-`@shieldlabs-ai/node` is bundled into `dist/`. Until it is published on npm, the workflows build it
-from its repository at the pin in `SHIELDLABS_NODE_REF` (CI, on `development` and `main`, and the dev deploy) and in
-`production.yml` (the prod deploy on `main`). That pin is the reviewed 1.x commit, not `shieldlabs-node` `main`. Each workflow
-stops unless the pin is a 1.x version. While that repository is private, add a read-only token as
-the `SHIELDLABS_NODE_TOKEN` secret.
+A maintainer pushes a v* tag matching package.json after CI passes. The release workflow repeats checks, builds and packs, installs the actual archive and runs a stdio smoke test before npm publication with provenance. Its npm environment holds NPM_TOKEN. Existing npm versions are not overwritten. This workflow does not deploy the hosted service or publish a container image.
 
-Maintainers push a `v*` tag that matches `package.json`. The release workflow checks, builds and
-packs with read-only permissions, then publishes the package to npm with provenance (environment
-`npm`, secret `NPM_TOKEN`) and pushes the image with provenance and an SBOM to
-`ghcr.io/shieldlabs-ai/shieldlabs-mcp` (environment `ghcr`). Add required reviewers to both
-environments in the repository settings to approve each release. Re-running the workflow is safe:
-a version that is already on npm is skipped and the image tags are pushed again. After both are
-live, `server.json` can be published to the MCP registry with `mcp-publisher publish`.
+server.json describes the npm package and hosted remote endpoint. Registry listing is a separate action; a repository or npm release does not imply an MCP Registry listing.
 
-The setup skill fetched by the `integrate_shieldlabs` prompt is pinned to a `shieldlabs-skills`
-release (`SETUP_SKILL_REF` in `src/constants.ts`). Tag that release before releasing this package,
-and move the pin only to a release you have checked.
+The integrate_shieldlabs prompt fetches the setup skill from the immutable skills release selected by SETUP_SKILL_REF in src/constants.ts. Publish and check that release before updating the pin.

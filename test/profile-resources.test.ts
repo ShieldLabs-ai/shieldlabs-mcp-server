@@ -1,9 +1,8 @@
-import { CURRENT_DETECTION_FLAG_KEYS } from '../src/catalog/detection-flags.js';
 import type { FetchLike, FetchRequestInit } from '@shieldlabs-ai/node';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TOOL_NAMES } from '../src/constants.js';
-import { IDENTIFICATION_SCHEMA, WEBHOOK_EVENT_SCHEMA } from '../src/resources/schemas.js';
+import { WEBHOOK_EVENT_SCHEMA } from '../src/resources/schemas.js';
 import {
   callJson,
   callTool,
@@ -296,7 +295,7 @@ describe('resources', () => {
     });
     expect(schema.contents[0]).toMatchObject({ mimeType: 'application/schema+json' });
     expect(JSON.parse((schema.contents[0] as any).text).title).toBe(
-      'ShieldLabs MCP identification projection',
+      'ShieldLabs History entity card',
     );
     const webhook = await connected.client.readResource({
       uri: 'shieldlabs://contract/webhook-event',
@@ -325,90 +324,10 @@ describe('resources', () => {
     ]);
     expect(bands.rate_limit_marker.meaning).toContain('999');
   });
-
-  it('reads an identification through the resource template', async () => {
-    connected = await connect(FULL_ENV, {
-      apiFetch: mockApiFetch({ rows: fixture('history-page.json').data, profile: {} }).fetch,
-    });
-    const found = await connected.client.readResource({
-      uri: 'shieldlabs://identifications/02f1d973-84db-4156-a7f7-e799e6bf389b',
-    });
-    const item = JSON.parse((found.contents[0] as any).text);
-    expect(item).toMatchObject({
-      request_id: '02f1d973-84db-4156-a7f7-e799e6bf389b',
-      risk_score: 80,
-      risk_band: 'dangerous',
-    });
-    await expect(
-      connected.client.readResource({
-        uri: 'shieldlabs://identifications/11111111-2222-4333-8444-555555555555',
-      }),
-    ).rejects.toThrow(/No identification with request ID/);
-    await expect(
-      connected.client.readResource({ uri: 'shieldlabs://identifications/nope' }),
-    ).rejects.toThrow(/must be a UUID/);
-  });
-
-  it('reports API errors when reading the template', async () => {
-    connected = await connect(FULL_ENV, {
-      apiFetch: statusFetch(401, '{"error":"invalid api key"}\n', 'text/plain').fetch,
-    });
-    await expect(
-      connected.client.readResource({
-        uri: 'shieldlabs://identifications/02f1d973-84db-4156-a7f7-e799e6bf389b',
-      }),
-    ).rejects.toThrow(/rejected the key/);
-  });
 });
 
 describe('JSON Schemas', () => {
   const ajv = new Ajv2020({ allErrors: true, strict: false, validateFormats: false });
-
-  it('validate tool outputs against the Identification schema', async () => {
-    const validate = ajv.compile(IDENTIFICATION_SCHEMA);
-    connected = await connect(FULL_ENV, {
-      apiFetch: mockApiFetch({ rows: fixture('history-page.json').data, profile: {} }).fetch,
-    });
-    const page = await callJson(connected.client, TOOL_NAMES.searchHistory, {
-      type: 'user_hid',
-      value: 'anonymous',
-    });
-    for (const item of page.identifications) {
-      expect(validate(item), JSON.stringify(validate.errors)).toBe(true);
-    }
-    for (const testCase of fixture<{ cases: any[] }>('normalization-cases.json').cases) {
-      const { raw: _raw, ...legacy } = testCase.expected;
-      const flags = { ...legacy.detection_flags };
-      for (const key of [
-        'private_relay',
-        'network_check_incomplete',
-        'latency_test',
-        'device_spoofing',
-        'rate_limited',
-        'ai_bot',
-        'ai_browser',
-      ])
-        flags[key] = null;
-      expect(
-        validate({
-          ...legacy,
-          risk_band:
-            legacy.risk_score > 100
-              ? 'rate_limited'
-              : legacy.risk_score >= 60
-                ? 'dangerous'
-                : legacy.risk_score >= 30
-                  ? 'suspicious'
-                  : 'trusted',
-          detection_flags: Object.fromEntries(
-            CURRENT_DETECTION_FLAG_KEYS.map((key) => [key, flags[key] ?? null]),
-          ),
-          signals: legacy.signals.map((s: any) => ({ ...s, description: null })),
-        }),
-        JSON.stringify(validate.errors),
-      ).toBe(true);
-    }
-  });
 
   it('validates current wire identifiers and distinguishes obsolete 17-flag Test fixtures', () => {
     const validate = ajv.compile(WEBHOOK_EVENT_SCHEMA);

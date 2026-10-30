@@ -30,11 +30,14 @@ const vectors = fixture<{ vectors: any[] }>('webhook-signature-vectors.json').ve
 describe('shieldlabs_explain_risk_score', () => {
   it('explains a webhook event: band, weighted signals, flags, connection type', async () => {
     connected = await connect({});
+    const event = structuredClone(scored);
+    event.data.identification_id = event.data.request_id;
+    delete event.data.request_id;
     const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
-      identification: scored,
+      identification: event,
     });
     expect(output).toMatchObject({
-      request_id: '02f1d973-84db-4156-a7f7-e799e6bf389b',
+      identification_id: '02f1d973-84db-4156-a7f7-e799e6bf389b',
       risk_score: 80,
       risk_band: 'dangerous',
       band_range: '60-100',
@@ -53,10 +56,8 @@ describe('shieldlabs_explain_risk_score', () => {
     });
     expect(output.detection_flags.map((f: any) => f.flag)).toEqual([
       'proxy',
-      'datacenter_ip',
       'anti_detect_browser',
       'ip_mismatch',
-      'suspicious_paid_click',
     ]);
     expect(output.detection_flags.find((f: any) => f.flag === 'ip_mismatch').scored).toBe(false);
     expect(output.connection_type).toMatchObject({ value: 'proxy', label: 'Proxy' });
@@ -104,7 +105,7 @@ describe('shieldlabs_explain_risk_score', () => {
     const marker = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
       identification: rateLimited,
     });
-    expect(marker.risk_band).toBe('rate_limited');
+    expect(marker.risk_band).toBe('banned_ip');
     expect(marker.band_range).toBe('above 100 (999)');
     expect(marker.band_meaning).toContain('not a Risk Score and not a band');
     expect(marker.notes.join(' ')).toContain('all-zero device ID');
@@ -126,7 +127,98 @@ describe('shieldlabs_explain_risk_score', () => {
         identification: historyPage.data[4],
       }),
     );
-    expect(crawlerText).toContain('No weighted risk signals');
+    expect(crawlerText).toContain('Detailed signal weights are unavailable');
+  });
+
+  it('reads score_details when risk_score is set and signals are empty', async () => {
+    connected = await connect({});
+    const row = {
+      ...historyPage.data[0],
+      risk_score: 30,
+      score: 30,
+      signals: [],
+      score_details: '[{"Value":30,"Description":"Is VPN"}]',
+    };
+    const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      identification: row,
+    });
+    expect(output.risk_score).toBe(30);
+    expect(output.risk_band).toBe('suspicious');
+    expect(
+      output.signals.map((signal: { name: string; weight: number }) => [
+        signal.name,
+        signal.weight,
+      ]),
+    ).toEqual([['vpn', 30]]);
+    const markdown = textOf(
+      await callTool(connected.client, TOOL_NAMES.explainRiskScore, { identification: row }),
+    );
+    expect(markdown).toContain('| VPN (`vpn`) | +30 |');
+    expect(markdown).not.toContain('nothing added to the Risk Score');
+    expect(markdown).not.toContain('Detailed signal weights are unavailable');
+  });
+
+  it('recovers score_details without requiring score or losing normalized context', async () => {
+    connected = await connect({});
+    const row = {
+      identification_id: '33333333-3333-4333-8333-333333333333',
+      risk_score: 30,
+      signals: [],
+      detection_flags: { vpn: true, proxy: false },
+      connection_type: 'vpn',
+      score_details: '[{"Value":30,"Description":"Is VPN"}]',
+    };
+    const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      identification: row,
+    });
+    expect(output.risk_score).toBe(30);
+    expect(
+      output.signals.map((signal: { name: string; weight: number }) => [
+        signal.name,
+        signal.weight,
+      ]),
+    ).toEqual([['vpn', 30]]);
+    expect(output.connection_type.value).toBe('vpn');
+    const text = textOf(
+      await callTool(connected.client, TOOL_NAMES.explainRiskScore, { identification: row }),
+    );
+    expect(text).toContain('| VPN (`vpn`) | +30 |');
+    expect(text).not.toContain('nothing added to the Risk Score');
+  });
+
+  it('prefers supplied weighted signals, including zero weights, over score_details', async () => {
+    connected = await connect({});
+    for (const weight of [0, 30]) {
+      const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+        identification: {
+          risk_score: 30,
+          signals: [{ name: 'proxy', weight }],
+          score_details: '[{"Value":30,"Description":"Is VPN"}]',
+        },
+      });
+      expect(
+        output.signals.map((signal: { name: string; weight: number }) => [
+          signal.name,
+          signal.weight,
+        ]),
+      ).toEqual([['proxy', weight]]);
+    }
+  });
+
+  it('keeps webhook origin when weights are recovered from score_details', async () => {
+    connected = await connect({});
+    const output = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
+      identification: {
+        event_type: 'identification.scored',
+        data: {
+          risk_score: 30,
+          signals: [],
+          score_details: '[{"Value":30,"Description":"Is VPN"}]',
+        },
+      },
+    });
+    expect(output.source).toBe('webhook');
+    expect(output.signals[0].weight).toBe(30);
   });
 
   it('accepts the json output of shieldlabs_get_identification', async () => {
@@ -134,31 +226,38 @@ describe('shieldlabs_explain_risk_score', () => {
       apiFetch: mockApiFetch({ rows: historyPage.data, profile: MOCK_PROFILE }).fetch,
     });
     const found = await callJson(connected.client, TOOL_NAMES.getIdentification, {
-      request_id: '7c1e2f4a-3b6d-4e8f-9a0b-1c2d3e4f5a6b',
+      identification_id: '7c1e2f4a-3b6d-4e8f-9a0b-1c2d3e4f5a6b',
+      domain: '11111111-1111-4111-8111-111111111111',
     });
     const fromOutput = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
       identification: found,
     });
     const fromApi = await callJson(connected.client, TOOL_NAMES.explainRiskScore, {
-      request_id: '7c1e2f4a-3b6d-4e8f-9a0b-1c2d3e4f5a6b',
+      identification_id: '7c1e2f4a-3b6d-4e8f-9a0b-1c2d3e4f5a6b',
+      domain: '11111111-1111-4111-8111-111111111111',
     });
     expect(fromOutput.signals).toEqual(fromApi.signals);
-    expect(fromApi).toMatchObject({ risk_score: 10, risk_band: 'trusted', source: 'history' });
-    expect(fromApi.detection_flags.map((f: any) => f.flag)).toEqual([
-      'timezone_mismatch',
-      'incognito',
-    ]);
+    expect(fromApi).toMatchObject({
+      risk: { state: 'ok', score: 10, band: 'trusted' },
+      weights_available: false,
+    });
   });
 
   it('gives actionable errors for unusable input', async () => {
     connected = await connect({});
     const attempts: [Record<string, unknown>, string][] = [
-      [{}, 'give exactly one of request_id'],
+      [{}, 'Give a pasted identification'],
       [
-        { request_id: '02f1d973-84db-4156-a7f7-e799e6bf389b', identification: {} },
-        'give exactly one of request_id',
+        { identification_id: '02f1d973-84db-4156-a7f7-e799e6bf389b', identification: {} },
+        'Give a pasted identification',
       ],
-      [{ request_id: '02f1d973-84db-4156-a7f7-e799e6bf389b' }, 'SHIELDLABS_API_KEY is not set'],
+      [
+        {
+          identification_id: '02f1d973-84db-4156-a7f7-e799e6bf389b',
+          domain: '11111111-1111-4111-8111-111111111111',
+        },
+        'SHIELDLABS_API_KEY is not set',
+      ],
       [{ identification: '{not json' }, 'not valid JSON'],
       [{ identification: '[1,2]' }, 'must be a JSON object'],
       [{ identification: ping }, 'carries no identification'],
@@ -207,7 +306,7 @@ describe('shieldlabs_explain_risk_score', () => {
       // A History row without its score is not a Risk Score of 0.
       [
         { score_details: '[{"Value":15,"Description":"Is VPN"}]' },
-        'This History API row has score_details but no score. Paste the whole row, including score, or use request_id.',
+        'This History API row has score_details but no score. Paste the whole row, including score, or use identification_id.',
       ],
     ];
     for (const [identification, message] of attempts) {
@@ -242,7 +341,7 @@ describe('shieldlabs_explain_risk_score', () => {
       },
     });
     expect(output.risk_band).toBe('suspicious');
-    expect(output.request_id).toBeNull();
+    expect(output.identification_id).toBeNull();
     expect(output.signals.map((s: any) => s.name)).toEqual(['os_not_detected', 'mystery_signal']);
     expect(output.detection_flags.map((f: any) => f.flag)).toEqual(['os_not_detected']);
     expect(output.connection_type).toMatchObject({
@@ -385,7 +484,7 @@ describe('shieldlabs_verify_webhook_signature', () => {
       event: {
         event_type: 'webhook.ping',
         schema_version: '2026-06-01',
-        request_id: null,
+        identification_id: null,
         risk_score: null,
       },
       hint: null,
@@ -472,7 +571,7 @@ describe('shieldlabs_verify_webhook_signature', () => {
         expect(output.valid).toBe(true);
         expect(output.event).toMatchObject({
           event_type: 'identification.scored',
-          request_id: scored.data.request_id,
+          identification_id: scored.data.request_id,
           risk_score: null,
           risk_band: null,
         });
@@ -492,7 +591,7 @@ describe('shieldlabs_verify_webhook_signature', () => {
       });
       expect(output.event.risk_score).toBe(score);
       expect(output.event.risk_band).toBe(
-        score === 999 ? 'rate_limited' : score === 0 ? 'trusted' : 'dangerous',
+        score === 999 ? 'banned_ip' : score === 0 ? 'trusted' : 'dangerous',
       );
       expect(output.checks.map((c: any) => c.check)).toEqual([
         'header_format',
@@ -511,11 +610,9 @@ describe('shieldlabs_verify_webhook_signature', () => {
         secret: 'whsec_x',
       }),
     );
-    expect(text).toContain('one delivery per identification today (1 second timeout, no retries)');
-    expect(text).toContain(
-      'resend identical bytes, so make the handler idempotent on data.request_id',
-    );
-    expect(text).toContain('Use the History API for guaranteed reads');
+    expect(text).toContain('deduplicate on event_id');
+    expect(text).toContain('hre.multi_account.changed');
+    expect(text).toContain('Use the History API for the latest identification');
   });
 
   it('explains malformed headers, bad base64, missing secrets and inauthentic events', async () => {

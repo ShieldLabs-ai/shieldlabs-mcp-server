@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
-  webhooks,
   WebhookParseError,
+  webhooks,
   type WebhookEvent,
   type WebhookSecret,
 } from '@shieldlabs-ai/node';
@@ -13,8 +13,8 @@ import type { ServerContext } from '../context.js';
 import { ToolInputError } from '../errors.js';
 import { code, escapeInvisible, shorten } from '../format.js';
 import { RiskBandSchema } from '../identification.js';
-import { failure, readOnlyAnnotations, respond, ResponseFormatSchema } from './shared.js';
 import { nullableString } from '../schema.js';
+import { failure, readOnlyAnnotations, respond, ResponseFormatSchema } from './shared.js';
 
 const HEADER_FORMAT = /^sha256=[0-9a-fA-F]{64}$/;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -74,7 +74,8 @@ const OutputSchema = z.object({
       event_type: z.string(),
       schema_version: z.string(),
       created_at: z.string(),
-      request_id: nullableString('Request ID of an identification.scored event'),
+      event_id: nullableString('Signed event_id when the delivery includes one'),
+      identification_id: nullableString('Identification ID of an identification.scored event.'),
       risk_score: z.number().int().nullable(),
       risk_band: RiskBandSchema.nullable(),
     })
@@ -144,7 +145,7 @@ export function diagnoseChangedBody(
 
 /** How deliveries work today and what a handler must do. */
 export const WEBHOOK_DELIVERY_NOTE =
-  'verify the raw body before parsing it and answer 2xx within 1 second. ShieldLabs sends one delivery per identification today (1 second timeout, no retries); later releases add retries that resend identical bytes, so make the handler idempotent on data.request_id. Use the History API for guaranteed reads and for the latest state.';
+  'verify the raw body before parsing it and answer 2xx within 1 second. Network errors, timeouts, 429 and 5xx retry with backoff, up to 8 failed sends or 15 minutes; other 4xx are terminal. Retries resend the same body and event_id, so deduplicate on event_id. identification.scored carries the score; hre.multi_account.changed is a separate opt-in group event with no identification_id. Use the History API for the latest identification.';
 
 /** Longest event field shown in the summary; real values are a few dozen characters. */
 const MAX_EVENT_FIELD_LENGTH = 200;
@@ -177,7 +178,21 @@ function eventSummary(event: WebhookEvent): {
       event_type: field(event.event_type),
       schema_version: field(event.schema_version),
       created_at: field(event.created_at),
-      request_id: scored === undefined ? null : field(scored.data.request_id),
+      event_id:
+        typeof event.raw.event_id === 'string' && event.raw.event_id !== ''
+          ? field(event.raw.event_id)
+          : null,
+      identification_id:
+        scored === undefined
+          ? null
+          : field(
+              (typeof event.raw.data === 'object' &&
+              event.raw.data !== null &&
+              typeof (event.raw.data as { identification_id?: unknown }).identification_id ===
+                'string'
+                ? (event.raw.data as { identification_id: string }).identification_id
+                : '') || scored.data.identification_id,
+            ),
       risk_score: valid ? score : null,
       risk_band: valid ? bandOf(score) : null,
     },
@@ -205,10 +220,12 @@ function verifyMarkdown(output: VerifyOutput): string {
       `- Event type: ${code(event.event_type)} (schema ${code(event.schema_version)})`,
     );
     lines.push(`- Created at: ${code(event.created_at)}`);
-    if (event.request_id !== null) lines.push(`- Request ID: ${code(event.request_id)}`);
+    if (event.event_id !== null) lines.push(`- Event ID: ${code(event.event_id)}`);
+    if (event.identification_id !== null)
+      lines.push(`- Identification ID: ${code(event.identification_id)}`);
     if (event.risk_score !== null) {
       lines.push(
-        `- Risk Score: ${event.risk_score}${event.risk_band === 'rate_limited' ? ' (rate-limit marker, not a Risk Score)' : ` (${event.risk_band})`}`,
+        `- Risk Score: ${event.risk_score}${event.risk_band === 'banned_ip' ? ' (rate-limit marker, not a Risk Score)' : ` (${event.risk_band})`}`,
       );
     }
   }
@@ -266,7 +283,7 @@ Args:
   - payload_encoding ('utf8' | 'base64'): default 'utf8'
   - response_format ('markdown' | 'json'): default 'markdown'
 
-Returns (json): { "valid": boolean, "secret_source": "argument" | "environment", "secrets_checked": number, "matched_secret": number | null, "checks": [{ check, ok, detail }], "event": { event_type, schema_version, created_at, request_id, risk_score, risk_band } | null, "hint": string | null }`,
+Returns (json): { "valid": boolean, "secret_source": "argument" | "environment", "secrets_checked": number, "matched_secret": number | null, "checks": [{ check, ok, detail }], "event": { event_type, schema_version, created_at, event_id, identification_id, risk_score, risk_band } | null, "hint": string | null }`,
       inputSchema: InputSchema,
       outputSchema: OutputSchema,
       annotations: readOnlyAnnotations('Verify webhook signature', false),

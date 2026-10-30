@@ -151,6 +151,23 @@ export function operationsBackend() {
       });
     if (url.pathname.startsWith(`${DOMAIN_PATH}/webhooks/`))
       return Response.json(hook(url.pathname.endsWith('/rotate-secret')));
+    if (/^\/mcp\/v1\/domains\/[^/]+\/history\//.test(url.pathname)) {
+      const scope = url.pathname.split('/')[4];
+      if (scope !== DOMAIN_ID)
+        return Response.json({ code: 'unknown_domain', error: 'unknown_domain' }, { status: 404 });
+      const owned = token === SECOND_TOKEN ? 'other.test' : 'example.com';
+      const rawLimit = url.searchParams.get('limit');
+      const limit = rawLimit === null ? Number.NaN : Number(rawLimit);
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      const rows = history.data.map((row) => ({
+        ...row,
+        ...historyExtras,
+        request_id: REQUEST_ID,
+        domain: owned,
+      }));
+      const page = Number.isFinite(limit) ? rows.slice(offset, offset + limit) : rows;
+      return Response.json({ data: page, total: rows.length });
+    }
     if (/^\/mcp\/v1\/(history|requests)\//.test(url.pathname)) {
       const want = url.searchParams.get('domain');
       const owned = token === SECOND_TOKEN ? 'other.test' : 'example.com';

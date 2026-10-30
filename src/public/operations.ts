@@ -1,51 +1,25 @@
-import {
-  HistoryFilterShape,
-  HistoryFiltersSchema,
-  historyFilterRanges,
-  historyFilters,
-  appendHistoryFilters,
-  type HistoryFilters,
-} from '../history-filters.js';
-import { BUILT_IN_SETUP_GUIDE } from '../prompts/setup-guide.js';
 import { ResourceTemplate, type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { McpError, ErrorCode, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { ErrorCode, McpError, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import {
-  CHARACTER_LIMIT,
-  ENTITY_TYPES,
-  LOOKUP_TYPES,
-  TOOL_NAMES,
-  UUID_PATTERN,
-} from '../constants.js';
+import { CHARACTER_LIMIT, TOOL_NAMES, UUID_PATTERN } from '../constants.js';
 import { createContext } from '../context.js';
 import {
-  buildExplanation,
-  ExplanationSchema,
-  fromIdentification,
-  normalizeHistoryRow,
-  parseIdentificationInput,
-} from '../explain.js';
-import { escapeInvisible, UNTRUSTED_DATA_FIELD_NOTE } from '../format.js';
-import {
-  toIdentificationOutput,
-  IdentificationOutputSchema,
-  identificationMarkdown,
-  type IdentificationOutput,
-} from '../identification.js';
+  entityView,
+  hostedEntityReader,
+  readIdentificationEntity,
+  registerEntityHistoryTools,
+} from '../entity-history.js';
+import { ToolInputError } from '../errors.js';
+import { escapeInvisible } from '../format.js';
+import { BUILT_IN_SETUP_GUIDE } from '../prompts/setup-guide.js';
 import { registerResources } from '../resources/index.js';
-import { summarize, SummarySchema } from '../summarize.js';
-import {
-  buildSearchOutput,
-  OutputSchema as HistorySearchOutputSchema,
-} from '../tools/search-history.js';
-import { RequestIdSchema, ResponseFormatSchema } from '../tools/shared.js';
-import { summaryMarkdown } from '../tools/summarize-entity.js';
+import { IdentificationIdSchema } from '../tools/shared.js';
 import {
   OperationError,
   object,
-  type OperationsClient,
   type JsonObject,
   type OperationMethod,
+  type OperationsClient,
 } from './operations-client.js';
 
 export const OPERATION_TOOL_NAMES = [
@@ -65,9 +39,9 @@ export const OPERATION_TOOL_NAMES = [
   'shieldlabs_rotate_webhook_secret',
   'shieldlabs_verify_webhook',
   'shieldlabs_test_webhook',
-  TOOL_NAMES.searchHistory,
+  TOOL_NAMES.listHistory,
+  TOOL_NAMES.getHistory,
   TOOL_NAMES.getIdentification,
-  TOOL_NAMES.summarizeEntity,
   TOOL_NAMES.explainRiskScore,
 ] as const;
 
@@ -85,9 +59,6 @@ const Hostname = z
   .max(253)
   .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/)
   .describe('Domain hostname, for example example.com, without scheme or path');
-const Domain = Hostname.optional().describe(
-  'Enabled domain hostname; omit only when the account has exactly one enabled domain',
-);
 const Confirm = z
   .literal(true)
   .describe('Explicit user confirmation for this destructive operation');
@@ -151,7 +122,7 @@ const WebhookOutput = z.object({
     .boolean()
     .optional()
     .describe(
-      'Whether multi-account group-change notifications are subscribed; omission means the backend profile did not report it',
+      'Stored compatibility setting; group events are delivered to every enabled public HTTPS endpoint regardless of this value',
     ),
   status: z.enum(['pending', 'active', 'failing', 'verification_failed', 'disabled']),
   created_at: z.string(),
@@ -254,14 +225,14 @@ function result(
 }
 
 function errorResult(error: unknown): CallToolResult {
-  const known = error instanceof OperationError;
+  const known = error instanceof OperationError || error instanceof ToolInputError;
   return {
     isError: true,
     content: [
       {
         type: 'text',
         text: known
-          ? `${error.code}: ${error.message}`
+          ? `${error instanceof OperationError ? error.code : 'invalid_request'}: ${error.message}`
           : 'operation_failed: Unable to complete this operation. Check input and connection; verify state before retrying a mutation.',
       },
     ],
@@ -375,7 +346,7 @@ function definitions(): Definition[] {
     {
       name: 'shieldlabs_create_webhook',
       description:
-        'Create a webhook with name and public HTTPS URL. Optional multiaccount enables opt-in group-change notifications when the backend release supports them; omitted defaults to false. Secret is masked by default.',
+        'Create a webhook with name and public HTTPS URL. Every enabled public HTTPS endpoint receives group-change events. Optional multiaccount is stored for compatibility and does not gate delivery. Secret is masked by default.',
       schema: z
         .object({
           ...domainFields,
@@ -393,7 +364,7 @@ function definitions(): Definition[] {
     {
       name: 'shieldlabs_patch_webhook',
       description:
-        'Update webhook name, URL and/or multiaccount subscription; omitted fields are preserved. A subscription-only patch preserves endpoint verification and does not replay history or cancel captured jobs. URL changes require confirm=true, reset verification and may disrupt delivery.',
+        'Update webhook name, URL and/or stored multiaccount setting; omitted fields are preserved. Group-change delivery applies to every enabled public HTTPS endpoint regardless of multiaccount. A setting-only patch preserves verification and does not replay history or cancel captured jobs. URL changes require confirm=true, reset verification and may disrupt delivery.',
       schema: z
         .object({
           ...hookFields,
@@ -452,171 +423,26 @@ function definitions(): Definition[] {
   return tools;
 }
 
-function lookupValue(type: string, value: string): string {
-  if (
-    !value ||
-    value === '.' ||
-    value === '..' ||
-    /[/\\]/.test(value) ||
-    [...value].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
-  ) {
-    throw new OperationError(
-      'invalid_request',
-      'Identifier must be nonempty and cannot contain slash, backslash, dot segments or control characters.',
-    );
-  }
-  if (type !== 'user_hid' && type !== 'ip' && !UUID_PATTERN.test(value)) {
-    throw new OperationError('invalid_request', 'This identifier must be a UUID.');
-  }
-  if (type === 'ip' && !z.ipv4().safeParse(value).success) {
-    // WHATWG URL canonicalizes valid mapped IPv6, including dotted and expanded forms.
-    const mapped = z.ipv6().safeParse(value).success
-      ? new URL(`https://[${value}]/`).hostname.match(/^\[::ffff:([0-9a-f]+):([0-9a-f]+)\]$/i)
-      : null;
-    if (!mapped) {
-      throw new OperationError(
-        'invalid_request',
-        'History supports IPv4 or IPv4-mapped IPv6 only. Pure IPv6 is not searchable; use a dotted IPv4 address or another identifier such as request_id or user_hid.',
-      );
-    }
-    const high = Number.parseInt(mapped[1]!, 16);
-    const low = Number.parseInt(mapped[2]!, 16);
-    value = `${high >>> 8}.${high & 255}.${low >>> 8}.${low & 255}`;
-  }
-  return type === 'user_hid' || type === 'ip' ? value : value.toLowerCase();
-}
-
-const Value = z
-  .string()
-  .min(1)
-  .max(512)
-  .describe(
-    'Exact identifier value, encoded once by this server; UUID for ID types, IPv4 or IPv4-mapped IPv6 for ip (pure IPv6 is not searchable), User HID text for user_hid',
-  );
-const historyFields = { domain: Domain, response_format: ResponseFormatSchema };
-
-async function historyPage(
-  client: OperationsClient,
-  type: string,
-  value: string,
-  domain: string | undefined,
-  limit: number,
-  offset: number,
-  signal?: AbortSignal,
-  requestAlias = false,
-  filters: HistoryFilters = {},
-) {
-  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  appendHistoryFilters(query, filters);
-  if (domain !== undefined) query.set('domain', domain);
-  const path = requestAlias
-    ? `/requests/${encodeURIComponent(value)}`
-    : `/history/${type}/${encodeURIComponent(value)}`;
-  const page = await client.request('GET', `/mcp/v1${path}?${query.toString()}`, undefined, signal);
-  if (
-    !Array.isArray(page.data) ||
-    !Number.isSafeInteger(page.total) ||
-    Number(page.total) < 0 ||
-    page.data.length > limit
-  ) {
-    throw new OperationError('invalid_response', 'ShieldLabs returned an invalid history page.');
-  }
-  const data = await Promise.all(page.data.map((row) => normalizeHistoryRow(object(row))));
-  return { data, total: Number(page.total) };
-}
-
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', onAbort);
-    };
-    const onAbort = () => {
-      cleanup();
-      reject(new OperationError('cancelled', 'Operation cancelled.'));
-    };
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, ms);
-    if (signal.aborted) onAbort();
-    else signal.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
-/** HTTP and delay time share one hard budget; a final poll starts within the remaining budget. */
 export async function identification(
   client: OperationsClient,
   id: string,
   domain: string | undefined,
   wait: boolean,
   signal: AbortSignal,
-  timeoutMs = 10_000,
+  waitMs = 10000,
 ) {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  signal.addEventListener('abort', abort, { once: true });
-  if (signal.aborted) abort();
-  const timer = setTimeout(abort, timeoutMs);
-  const deadline = performance.now() + timeoutMs;
-  const ladder = [250, 500, 1000, 1500, 2000];
-  let attempt = 0;
-  let finalPoll = false;
-  let transient: OperationError | undefined;
+  if (domain === undefined || !UUID_PATTERN.test(domain))
+    throw new OperationError('invalid_request', 'domain must be the public domain UUID');
+  const reader = hostedEntityReader((path, readSignal) =>
+    client.request('GET', path, undefined, readSignal),
+  );
   try {
-    for (;;) {
-      if (controller.signal.aborted || performance.now() >= deadline) break;
-      let retryAfter = 0;
-      try {
-        const page = await historyPage(
-          client,
-          'request_id',
-          id.toLowerCase(),
-          domain,
-          1,
-          0,
-          controller.signal,
-          true,
-        );
-        if (page.data[0] !== undefined) return page.data[0];
-        transient = undefined;
-      } catch (error) {
-        if (controller.signal.aborted) break;
-        if (
-          !(error instanceof OperationError) ||
-          !['rate_limited', 'unavailable', 'cancelled'].includes(error.code) ||
-          !wait
-        )
-          throw error;
-        transient = error;
-        retryAfter = error.retryAfterMs ?? 0;
-      }
-      if (!wait || finalPoll) break;
-      const remaining = deadline - performance.now();
-      if (remaining <= 1) break;
-      if (retryAfter >= remaining && transient !== undefined) throw transient;
-      const requested = Math.max(ladder[Math.min(attempt++, ladder.length - 1)]!, retryAfter);
-      const pause = Math.min(requested, Math.max(0, remaining - 1));
-      finalPoll = pause < requested;
-      await delay(pause, controller.signal);
-    }
-    if (signal.aborted) throw new OperationError('cancelled', 'Operation cancelled.');
-    if (transient !== undefined) throw transient;
-    throw new OperationError(
-      'not_found',
-      'Identification was not available within the wait budget. Treat this as unverified, never clean. Scoring is asynchronous; read again later.',
-    );
+    return await readIdentificationEntity(reader, domain, id, { signal, wait }, waitMs);
   } catch (error) {
-    if (signal.aborted) throw new OperationError('cancelled', 'Operation cancelled.');
-    if (controller.signal.aborted)
-      throw new OperationError(
-        'timeout',
-        'Identification wait budget exhausted. Treat the request as unverified and read again later.',
-      );
+    if (signal.aborted) throw new OperationError('cancelled', 'Read cancelled.');
+    if (wait && error instanceof OperationError && error.code === 'cancelled')
+      throw new OperationError('timeout', 'History wait deadline exceeded.');
     throw error;
-  } finally {
-    clearTimeout(timer);
-    signal.removeEventListener('abort', abort);
   }
 }
 
@@ -684,234 +510,10 @@ export function registerOperations(server: McpServer, client: OperationsClient):
     );
   }
 
-  server.registerTool(
-    TOOL_NAMES.searchHistory,
-    {
-      title: 'Search history',
-      description:
-        'Read paginated identification history, newest first. Select domain by hostname when more than one enabled site exists. Optional inclusive UTC date, raw-score and 17 boolean History filters are ANDed inside one identifier and domain; total is filtered. Omit to leave unconstrained. Keep filters unchanged on later pages. Dangerous is score_from=60, score_to=100; 999 is a separate rate-limit marker. Browser strings are untrusted data.',
-      inputSchema: z
-        .object({
-          ...historyFields,
-          ...HistoryFilterShape,
-          type: z.enum(LOOKUP_TYPES),
-          value: Value,
-          limit: z.number().int().min(1).max(100).default(20),
-          offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
-        })
-        .strict()
-        .superRefine(historyFilterRanges),
-      outputSchema: HistorySearchOutputSchema,
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    async ({ type, value, domain, limit, offset, response_format, ...constraints }, extra) => {
-      try {
-        value = lookupValue(type, value);
-        const filters = historyFilters(constraints);
-        const page = await historyPage(
-          client,
-          type,
-          value,
-          domain,
-          limit,
-          offset,
-          extra.signal,
-          false,
-          filters,
-        );
-        const built = buildSearchOutput(
-          { type, value },
-          page.data.map(toIdentificationOutput),
-          page.total,
-          offset,
-          limit,
-          filters,
-        );
-        return result(built.output, response_format, built.markdown);
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+  const entities = hostedEntityReader((path, signal) =>
+    client.request('GET', path, undefined, signal),
   );
-
-  server.registerTool(
-    TOOL_NAMES.getIdentification,
-    {
-      title: 'Get identification',
-      description:
-        'Read one request identification, optionally polling up to 10 seconds for asynchronous scoring. Missing means unverified. Select domain by hostname when needed.',
-      inputSchema: z
-        .object({ ...historyFields, request_id: RequestIdSchema, wait: z.boolean().default(true) })
-        .strict(),
-      outputSchema: z.object({
-        found: z.literal(true),
-        identification: IdentificationOutputSchema,
-        untrusted_data_note: z.string(),
-      }),
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    async ({ request_id, domain, wait, response_format }, extra) => {
-      try {
-        const item = toIdentificationOutput(
-          await identification(client, request_id, domain, wait, extra.signal),
-        );
-        return result(
-          { found: true, identification: item, untrusted_data_note: UNTRUSTED_DATA_FIELD_NOTE },
-          response_format,
-          identificationMarkdown(item, '##').join('\n'),
-        );
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
-  );
-
-  server.registerTool(
-    TOOL_NAMES.summarizeEntity,
-    {
-      title: 'Summarize entity',
-      description:
-        'Aggregate a bounded recent history window for a user, device, visitor, IP or cookie. Counts and risk bands are computed from returned rows, not a backend event verdict. Optional inclusive UTC date, raw-score and 17 boolean History filters are ANDed inside this identifier and domain on every page. Totals and aggregates cover only matching rows. Dangerous is score_from=60, score_to=100; 999 is a separate marker.',
-      inputSchema: z
-        .object({
-          ...historyFields,
-          ...HistoryFilterShape,
-          type: z.enum(ENTITY_TYPES),
-          value: Value,
-          max_items: z.number().int().min(1).max(500).default(100),
-        })
-        .strict()
-        .superRefine(historyFilterRanges),
-      outputSchema: z.object({
-        filters: HistoryFiltersSchema.optional(),
-        lookup: z.object({ type: z.enum(ENTITY_TYPES), value: z.string() }),
-        computed_from: z.string(),
-        window: z.object({
-          identifications_analyzed: z.number().int(),
-          total_matching: z.number().int(),
-          max_items: z.number().int(),
-          complete: z.boolean(),
-        }),
-        summary: SummarySchema,
-        untrusted_data_note: z.string(),
-      }),
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    async ({ type, value, domain, max_items, response_format, ...constraints }, extra) => {
-      try {
-        value = lookupValue(type, value);
-        const filters = historyFilters(constraints);
-        const items: IdentificationOutput[] = [];
-        const seen = new Set<string>();
-        let total = 0;
-        let offset = 0;
-        for (
-          let pageNo = 0;
-          pageNo < Math.ceil(max_items / 100) + 2 && items.length < max_items;
-          pageNo++
-        ) {
-          const page = await historyPage(
-            client,
-            type,
-            value,
-            domain,
-            Math.min(100, max_items - items.length),
-            offset,
-            extra.signal,
-            false,
-            filters,
-          );
-          total = page.total;
-          if (page.data.length === 0) break;
-          for (const row of page.data) {
-            if (row.request_id !== '') {
-              if (seen.has(row.request_id)) continue;
-              seen.add(row.request_id);
-            }
-            items.push(toIdentificationOutput(row));
-          }
-          offset += page.data.length;
-          if (offset >= total) break;
-        }
-        const output = {
-          ...(Object.keys(filters).length ? { filters } : {}),
-          lookup: { type, value },
-          computed_from:
-            'Computed from this bounded history window, not a ShieldLabs event verdict.',
-          window: {
-            identifications_analyzed: items.length,
-            total_matching: total,
-            max_items,
-            complete: offset >= total,
-          },
-          summary: summarize(items),
-          untrusted_data_note: UNTRUSTED_DATA_FIELD_NOTE,
-        };
-        return result(output, response_format, summaryMarkdown(output));
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
-  );
-
-  server.registerTool(
-    TOOL_NAMES.explainRiskScore,
-    {
-      title: 'Explain Risk Score',
-      description:
-        'Explain weighted risk signals, flags and the Risk Score using the local catalog. Give exactly one of request_id or a pasted identification. Domain selects the history read.',
-      inputSchema: z
-        .object({
-          ...historyFields,
-          request_id: RequestIdSchema.optional(),
-          identification: z
-            .union([z.record(z.string(), z.unknown()), z.string().max(500_000)])
-            .optional(),
-        })
-        .strict(),
-      outputSchema: ExplanationSchema,
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    async ({ request_id, identification: pasted, domain, response_format }, extra) => {
-      try {
-        if ((request_id === undefined) === (pasted === undefined))
-          throw new OperationError(
-            'invalid_request',
-            'Give exactly one of request_id or identification.',
-          );
-        const input =
-          request_id === undefined
-            ? await parseIdentificationInput(pasted)
-            : fromIdentification(
-                await identification(client, request_id, domain, true, extra.signal),
-              );
-        const built = buildExplanation(input);
-        return result(built.explanation, response_format, built.markdown);
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
-  );
+  registerEntityHistoryTools(server, { reader: entities, respond: result, failure: errorResult });
 
   // The shared reference resources are static and require no API-key or network context.
   const offline = createContext({
@@ -928,7 +530,7 @@ export function registerOperations(server: McpServer, client: OperationsClient):
   registerResources(server, offline);
   server.registerResource(
     'hosted-identification',
-    new ResourceTemplate('shieldlabs://domains/{domain}/identifications/{request_id}', {
+    new ResourceTemplate('shieldlabs://domains/{domain}/identifications/{identification_id}', {
       list: undefined,
     }),
     {
@@ -939,10 +541,10 @@ export function registerOperations(server: McpServer, client: OperationsClient):
     },
     async (uri, variables, extra) => {
       try {
-        const domain = Hostname.parse(variables.domain);
-        const id = RequestIdSchema.parse(variables.request_id);
-        const value = toIdentificationOutput(
-          await identification(client, id, domain, false, extra.signal),
+        const domain = DomainId.parse(variables.domain);
+        const id = IdentificationIdSchema.parse(variables.identification_id);
+        const value = entityView(
+          await entities.get(domain, 'identifications', id, { signal: extra.signal }),
         );
         const output = result({ identification: value });
         if (output.isError)
@@ -960,7 +562,7 @@ export function registerOperations(server: McpServer, client: OperationsClient):
         throw new McpError(
           ErrorCode.InternalError,
           error instanceof OperationError
-            ? `${error.code}: ${error.message}`
+            ? `${error instanceof OperationError ? error.code : 'invalid_request'}: ${error.message}`
             : 'Invalid identification resource parameters.',
         );
       }
@@ -1003,7 +605,7 @@ export function registerOperations(server: McpServer, client: OperationsClient):
     {
       title: 'Investigate user',
       description: 'Investigate identification risk for an account in an explicit domain.',
-      argsSchema: { domain: Hostname, user_hid: Value },
+      argsSchema: { domain: DomainId, user_hid: z.string().min(1).max(512) },
     },
     ({ domain, user_hid }) =>
       investigationPrompt(
@@ -1016,12 +618,15 @@ export function registerOperations(server: McpServer, client: OperationsClient):
     {
       title: 'Review request',
       description: 'Review one request identification in an explicit domain.',
-      argsSchema: { domain: Hostname, request_id: RequestIdSchema },
+      argsSchema: {
+        domain: DomainId,
+        identification_id: IdentificationIdSchema,
+      },
     },
-    ({ domain, request_id }) =>
+    ({ domain, identification_id }) =>
       investigationPrompt(
         domain,
-        `Read request_id ${JSON.stringify(request_id)}; missing means unverified.`,
+        `Read identification_id ${JSON.stringify(identification_id)}; missing means unverified.`,
       ),
   );
 }
