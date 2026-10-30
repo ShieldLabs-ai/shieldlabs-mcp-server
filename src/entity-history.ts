@@ -33,7 +33,15 @@ const Signals = z.object({
   items: z.array(z.string()).max(100),
 });
 const NullableText = z.string().nullable();
+const ScoredSignals = z
+  .array(z.object({ name: z.string().min(1).max(256), weight: z.number().int() }))
+  .max(100);
+// Compatible with the published SDK, which preserves additional entity fields.
+type WeightedHistoryEntity = HistoryEntity & {
+  scored_signals?: { name: string; weight: number }[] | null;
+};
 export const EntitySchema = z.object({
+  scored_signals: ScoredSignals.nullable().optional(),
   type: z.enum(['identification', 'user', 'visitor', 'device', 'ip']),
   id: z.string().min(1).max(512),
   domain_id: z.string().regex(UUID_PATTERN),
@@ -222,7 +230,7 @@ interface Runtime {
   online?: boolean;
 }
 /** Output only public schema fields. Browser text stays inert; opaque paging tokens are untouched. */
-export function entityView(value: unknown): HistoryEntity {
+export function entityView(value: unknown): WeightedHistoryEntity {
   const parsed = EntitySchema.parse(parseHistoryEntity(value));
   parsed.signals.items = parsed.signals.items.map(canonicalSignalName);
   const safe = (v: unknown): unknown =>
@@ -233,9 +241,9 @@ export function entityView(value: unknown): HistoryEntity {
         : v !== null && typeof v === 'object'
           ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, safe(x)]))
           : v;
-  return safe(parsed) as HistoryEntity;
+  return safe(parsed) as WeightedHistoryEntity;
 }
-export function entityMarkdown(entity: HistoryEntity): string {
+export function entityMarkdown(entity: WeightedHistoryEntity): string {
   const risk = entity.risk;
   const label =
     risk.state === 'unavailable'
@@ -248,6 +256,12 @@ export function entityMarkdown(entity: HistoryEntity): string {
     `- ${entity.type === 'identification' ? 'Identification ID' : 'Entity ID'}: ${code(entity.id)}`,
     `- Domain: ${code(entity.domain)} (${code(entity.domain_id)})`,
   ];
+  if (entity.scored_signals != null) {
+    lines.push('### Recorded signal weights');
+    for (const signal of entity.scored_signals)
+      lines.push(`- ${code(signal.name)}: ${signal.weight}`);
+    if (entity.scored_signals.length === 0) lines.push('- No recorded weighted signals.');
+  }
   if (typeof entity.identifications === 'number')
     lines.push(`- Identifications reported by the API: ${entity.identifications}`);
   lines.push(
@@ -505,6 +519,7 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
             risk_score: z.number().int().optional(),
             weights_available: z.boolean().optional(),
             signals: z.union([Signals, z.array(z.record(z.string(), z.unknown()))]),
+            scored_signals: ScoredSignals.nullable().optional(),
             untrusted_data_note: z.string(),
           })
           .passthrough(),
@@ -540,6 +555,31 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
             input = input.identification as Record<string, unknown>;
           if (input !== null && typeof input === 'object' && input.type === 'identification') {
             const entity = entityView(input);
+            if (
+              entity.risk.state === 'ok' &&
+              entity.risk.score !== undefined &&
+              entity.scored_signals != null
+            ) {
+              const built = buildExplanation(
+                parseIdentificationInput({
+                  identification_id: entity.id,
+                  risk_score: entity.risk.score,
+                  signals: entity.scored_signals,
+                }),
+              );
+              return emit(
+                {
+                  ...built.explanation,
+                  identification_id: entity.id,
+                  source: args.identification_id === undefined ? 'input' : 'history',
+                  risk: entity.risk,
+                  scored_signals: entity.scored_signals,
+                  weights_available: true,
+                },
+                args.response_format,
+                entity.scored_signals.length === 0 ? entityMarkdown(entity) : built.markdown,
+              );
+            }
             const note = 'Detailed signal weights are unavailable in this response.';
             return emit(
               {
