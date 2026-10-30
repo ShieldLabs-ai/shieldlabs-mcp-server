@@ -41,6 +41,9 @@ describe('capabilities with every API configured', () => {
     expect(card).not.toHaveProperty('max_items');
     expect(card.resource.enum).toEqual(['identifications', 'user', 'visitor', 'device', 'ip']);
     expect(card.resource_id).toMatchObject({ minLength: 1, maxLength: 512 });
+    expect(card).not.toHaveProperty('relation');
+    expect(card).not.toHaveProperty('relation_limit');
+    expect(card).not.toHaveProperty('relation_page_token');
     expect(search).not.toHaveProperty('filter');
     expect(search).not.toHaveProperty('include_total');
     expect(search.page_token).toMatchObject({ type: 'string' });

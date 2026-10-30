@@ -27,7 +27,7 @@ Domain and webhook identifiers are public UUIDs. History `domain` is a UUID, not
 | `shieldlabs_test_webhook` | domain_id, webhook_id |
 | `shieldlabs_get_identification` | domain UUID, identification_id, optional wait and paired from/to |
 | `shieldlabs_list_history` | domain UUID, resource=identifications/user, flat filters, limit, page_token, snapshot, paired from/to |
-| `shieldlabs_get_history` | domain UUID, resource=identifications/user/visitor/device/ip, resource_id, the same flat filters, device_id_source, relation |
+| `shieldlabs_get_history` | domain UUID, resource=identifications/user/visitor/device/ip, resource_id, the same flat filters, device_id_source |
 | `shieldlabs_explain_risk_score` | identification_id with domain UUID, or a pasted identification |
 
 Webhook names are trimmed and bounded to 80 Unicode characters. URLs require public HTTPS without credentials and are bounded to 512 UTF-8 bytes. Omitted patch fields are preserved. A subscription-only patch does not change the endpoint. Pure IPv6 is refused locally; IPv4-mapped IPv6 is normalized to IPv4 for IP cards.
@@ -45,11 +45,11 @@ An available identification score is `risk.score` with `risk.state:"ok"`. `risk.
 
 Lists support identifications and user only. Optional RFC3339 from/to must both be supplied;
 the window includes from and excludes to. Keep the flat query unchanged while paging with
-page_token. Filters include risk_bands, hre_min_accounts, hre_min_devices, ids (users only),
+page_token. Filters include risk_bands, hre_min_accounts, hre_min_devices, ids (one User HID string, users only),
 risk_signals, source, campaign and the 20 boolean flags, including banned_ip. The signal/filter
 input rate_limited is rejected. HTTP 429 still uses the error code rate_limited.
 Nested filter, chips, offset, include_total and sort are rejected. Device cards additionally
-accept device_id_source; cards support relation queries defined in the tool schema.
+accept device_id_source; relation, relation_limit and relation_page_token are not accepted.
 
 ## Resources and prompts
 
@@ -61,4 +61,4 @@ Domain/server and webhook credentials are masked. An installer can explicitly op
 
 History reads preserve scope and returned IDs, reject malformed states, bound output and respect cancellation, Retry-After and a total read deadline. Oversized pages require a smaller limit rather than truncating rows while reusing an end-of-page cursor.
 
-A signed sample test, verification ping and real event delivery are separate checks. A multiaccount subscription does not prove source generation. Validate real group delivery separately from ordinary scored events. The stdio/API-key server uses the same entity contract through `/api/v1`, without OAuth management operations.
+A signed sample test, verification ping and real event delivery are separate checks. Every enabled endpoint with a public HTTPS URL receives group events; the stored multiaccount field does not gate delivery. Endpoint configuration does not prove source generation. Validate real group delivery separately from ordinary scored events. The stdio/API-key server uses the same entity contract through `/api/v1`, without OAuth management operations.

@@ -122,7 +122,7 @@ const WebhookOutput = z.object({
     .boolean()
     .optional()
     .describe(
-      'Whether multi-account group-change notifications are subscribed; omission means the backend profile did not report it',
+      'Stored compatibility setting; group events are delivered to every enabled public HTTPS endpoint regardless of this value',
     ),
   status: z.enum(['pending', 'active', 'failing', 'verification_failed', 'disabled']),
   created_at: z.string(),
@@ -346,7 +346,7 @@ function definitions(): Definition[] {
     {
       name: 'shieldlabs_create_webhook',
       description:
-        'Create a webhook with name and public HTTPS URL. Optional multiaccount enables opt-in group-change notifications when the backend release supports them; omitted defaults to false. Secret is masked by default.',
+        'Create a webhook with name and public HTTPS URL. Every enabled public HTTPS endpoint receives group-change events. Optional multiaccount is stored for compatibility and does not gate delivery. Secret is masked by default.',
       schema: z
         .object({
           ...domainFields,
@@ -364,7 +364,7 @@ function definitions(): Definition[] {
     {
       name: 'shieldlabs_patch_webhook',
       description:
-        'Update webhook name, URL and/or multiaccount subscription; omitted fields are preserved. A subscription-only patch preserves endpoint verification and does not replay history or cancel captured jobs. URL changes require confirm=true, reset verification and may disrupt delivery.',
+        'Update webhook name, URL and/or stored multiaccount setting; omitted fields are preserved. Group-change delivery applies to every enabled public HTTPS endpoint regardless of multiaccount. A setting-only patch preserves verification and does not replay history or cancel captured jobs. URL changes require confirm=true, reset verification and may disrupt delivery.',
       schema: z
         .object({
           ...hookFields,

@@ -98,7 +98,7 @@ describe('package metadata', () => {
   });
 
   it('ships the release notes and the license', () => {
-    expect(read('CHANGELOG.md')).toContain(`## [${SERVER_VERSION}] - 2026-10-28`);
+    expect(read('CHANGELOG.md')).toContain(`## [${SERVER_VERSION}] - 2026-10-30`);
     expect(read('LICENSE')).toContain('Copyright (c) 2026 ShieldLabs Inc.');
     const readme = read('README.md');
     for (const section of [

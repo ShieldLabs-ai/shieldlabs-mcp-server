@@ -283,7 +283,7 @@ for (const mode of ['stdio', 'hosted'] as const)
             risk_bands: ['dangerous'],
             hre_min_accounts: 9,
             hre_min_devices: 9,
-            ids: ['first'],
+            ids: 'first',
             response_format: 'json',
           },
         });
@@ -297,6 +297,15 @@ for (const mode of ['stdio', 'hosted'] as const)
         expect(url.searchParams.has('include_total')).toBe(false);
         expect(url.searchParams.has('filter')).toBe(false);
         expect(url.searchParams.has('sort')).toBe(false);
+      }));
+    it('rejects more than one user id before IO', async () =>
+      run(mode, { body: { data: [], next_page_token: null } }, async (client, calls) => {
+        const result = await client.callTool({
+          name: 'shieldlabs_list_history',
+          arguments: { domain: DOMAIN_ID, resource: 'user', ids: ['first', 'second'] },
+        });
+        expect(result.isError).toBe(true);
+        expect(calls).toHaveLength(0);
       }));
     it('does not invent a total for an empty page', async () =>
       run(mode, { body: { data: [], next_page_token: null } }, async (client) => {

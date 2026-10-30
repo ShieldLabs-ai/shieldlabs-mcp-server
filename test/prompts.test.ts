@@ -190,7 +190,7 @@ describe('integrate_shieldlabs', () => {
 
   it('fetches the setup skill of the pinned skills release, never a branch', () => {
     expect(SETUP_SKILL_URL).toBe(
-      'https://raw.githubusercontent.com/ShieldLabs-ai/skills/refs/tags/v1.2.0/skills/shieldlabs-setup/SKILL.md',
+      'https://raw.githubusercontent.com/ShieldLabs-ai/skills/refs/tags/v1.3.1/skills/shieldlabs-setup/SKILL.md',
     );
   });
 

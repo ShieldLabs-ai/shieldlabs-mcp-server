@@ -161,30 +161,13 @@ const FLAG_NAMES = [
   'ai_bot',
   'ai_browser',
 ] as const;
-const RELATIONS = [
-  'visitors',
-  'devices',
-  'users',
-  'public_ips',
-  'sessions',
-  'cookies',
-  'local_ips',
-  'countries',
-  'local_countries',
-  'browsers',
-  'os',
-  'device_types',
-  'connection_types',
-  'risk_signals',
-  'high_risk_events',
-] as const;
 const FlagFields = Object.fromEntries(FLAG_NAMES.map((name) => [name, z.boolean().optional()]));
 const FlatFilters = {
   snapshot: z.string().min(1).max(4096).optional(),
   risk_bands: z.array(Band).max(3).optional(),
   hre_min_accounts: z.number().int().min(3).max(99).optional(),
   hre_min_devices: z.number().int().min(4).max(99).optional(),
-  ids: z.array(z.string().min(1).max(512)).max(100).optional(),
+  ids: z.string().min(1).max(512).optional(),
   risk_signals: z.array(z.string().min(1).max(128)).max(32).optional(),
   source: z.array(z.string().min(1).max(512)).max(8).optional(),
   campaign: z.array(z.string().min(1).max(512)).max(8).optional(),
@@ -325,7 +308,7 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
       {
         title: 'List History',
         description:
-          'List identifications or users in one domain. domain is the public UUID from shieldlabs_list_domains. Repeat page_token with the same resource, window and flat filters. Filters are risk_bands, hre_min_accounts (3-99), hre_min_devices (4-99), ids (user list only), risk_signals, source, campaign and boolean flags. Dates are RFC3339 and the window is half-open. Nested filter, chips, offset, include_total and sort are rejected. visitor, device and ip have a card, not a list.',
+          'List identifications or users in one domain. domain is the public UUID from shieldlabs_list_domains. Repeat page_token with the same resource, window and flat filters. Filters are risk_bands, hre_min_accounts (3-99), hre_min_devices (4-99), ids (one user id on the user list), risk_signals, source, campaign and boolean flags. Dates are RFC3339 and the window is half-open. Nested filter, chips, offset, include_total and sort are rejected. visitor, device and ip have a card, not a list.',
         inputSchema: z
           .object({
             ...common,
@@ -437,16 +420,13 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
       {
         title: 'Get History record',
         description:
-          'Read one identification, user, visitor, device or ip card. domain is the public UUID and resource_id is the record id. The same flat list filters apply, plus device_id_source (legacy or fp21_record), relation, relation_limit and relation_page_token. Nested filter, chips, offset and include_total are rejected.',
+          'Read one identification, user, visitor, device or ip card. domain is the public UUID and resource_id is the record id. The same flat list filters apply, plus device_id_source (legacy or fp21_record). relation, relation_limit and relation_page_token are not accepted. Nested filter, chips, offset and include_total are rejected.',
         inputSchema: z
           .object({
             ...common,
             resource: z.enum(['identifications', 'user', 'visitor', 'device', 'ip']),
             resource_id: z.string().min(1).max(512),
             device_id_source: z.enum(['legacy', 'fp21_record']).optional(),
-            relation: z.enum(RELATIONS).optional(),
-            relation_limit: z.number().int().min(1).max(100).optional(),
-            relation_page_token: z.string().min(1).max(4096).optional(),
             ...FlatFilters,
           })
           .strict()
@@ -479,11 +459,6 @@ export function registerEntityHistoryTools(server: McpServer, runtime: Runtime):
               ...(args.device_id_source === undefined
                 ? {}
                 : { device_id_source: args.device_id_source }),
-              ...(args.relation === undefined ? {} : { relation: args.relation }),
-              ...(args.relation_limit === undefined ? {} : { relation_limit: args.relation_limit }),
-              ...(args.relation_page_token === undefined
-                ? {}
-                : { relation_page_token: args.relation_page_token }),
             }),
           );
           return emit(
@@ -658,24 +633,20 @@ export function hostedEntityReader(
   const query = (options: EntityReadOptions) => {
     const q = new URLSearchParams();
     const add = (key: string, value: string) => q.append(key, value);
-    for (const key of [
-      'from',
-      'to',
-      'snapshot',
-      'page_token',
-      'device_id_source',
-      'relation',
-      'relation_page_token',
-    ] as const) {
+    for (const key of ['from', 'to', 'snapshot', 'page_token', 'device_id_source'] as const) {
       const value = options[key];
       if (value !== undefined) add(key, value);
     }
-    for (const key of ['limit', 'hre_min_accounts', 'hre_min_devices', 'relation_limit'] as const) {
+    for (const key of ['limit', 'hre_min_accounts', 'hre_min_devices'] as const) {
       const value = options[key];
       if (value !== undefined) add(key, String(value));
     }
-    for (const key of ['risk_bands', 'risk_signals', 'source', 'campaign', 'ids'] as const)
+    for (const key of ['risk_bands', 'risk_signals', 'source', 'campaign'] as const)
       for (const item of options[key] ?? []) add(key, item);
+    const userID = options.ids as unknown;
+    if (typeof userID === 'string') add('ids', userID);
+    else if (Array.isArray(userID) && userID.length === 1 && typeof userID[0] === 'string')
+      add('ids', userID[0]);
     for (const key of FLAG_NAMES) {
       const value = options[key];
       if (value !== undefined) add(key, value ? 'true' : 'false');

@@ -10,6 +10,8 @@ Hosted OAuth offers **21 tools** for domain setup, webhook management and Histor
 
 ## Install
 
+For guided SDK and MCP setup, give your coding assistant [the installation guide](https://shieldlabs.ai/get-started.md). Focused skills are available in [ShieldLabs-ai/skills](https://github.com/ShieldLabs-ai/skills).
+
 Use an MCP client with a remote streamable HTTP server and OAuth:
 
 ```text
@@ -61,7 +63,7 @@ For local stdio:
 
 The result contains `data` and `next_page_token`. Preserve the same resource, window and flat filters when passing `next_page_token` as `page_token`. Tokens are opaque. The server can invalidate them after a restart; do not silently merge a fresh traversal into an earlier snapshot.
 
-Optional `from` and `to` are paired RFC3339 timestamps. The window includes `from` and excludes `to`. Filters are flat fields: `risk_bands`, `hre_min_accounts` (3-99), `hre_min_devices` (4-99), `ids` on the user list, `risk_signals`, `source`, `campaign` and boolean flags such as `is_vpn`. Nested `filter`, `chips`, `offset`, `include_total` and `sort` are rejected.
+Optional `from` and `to` are paired RFC3339 timestamps. The window includes `from` and excludes `to`. Filters are flat fields: `risk_bands`, `hre_min_accounts` (3-99), `hre_min_devices` (4-99), `ids` as one User HID string on the user list, `risk_signals`, `source`, `campaign` and boolean flags such as `is_vpn`. Nested `filter`, `chips`, `offset`, `include_total` and `sort` are rejected.
 
 ```json
 {"domain":"11111111-1111-4111-8111-111111111111","resource":"identifications","risk_bands":["dangerous"],"is_vpn":true,"from":"2026-10-27T00:00:00Z","to":"2026-10-28T00:00:00Z"}
@@ -77,11 +79,11 @@ Visitor, device and IP resources have cards, not lists.
 {"domain":"11111111-1111-4111-8111-111111111111","resource":"user","resource_id":"exact-user-hid","response_format":"json"}
 ```
 
-The result is `{resource, entity}`. It preserves the API's identification count, risk, related counts and High-Risk Events availability. One card is not one identification, and it does not enumerate the underlying history. Card reads also accept `device_id_source`, `relation`, `relation_limit` and `relation_page_token`.
+The result is `{resource, entity}`. It preserves the API's identification count, risk, related counts and High-Risk Events availability. One card is not one identification, and it does not enumerate the underlying history. Card reads also accept `device_id_source`. Related-account/device traversal is unavailable; `relation`, `relation_limit` and `relation_page_token` are not accepted.
 
 ### Webhooks and setup
 
-Hosted tools can create and verify a receiver, send a signed test, read delivery status, opt into `multiaccount` events and rotate credentials with confirmation. A sample test does not prove real delivery. HRE confidence is separate from Risk Score; unknown metadata does not imply a negative result.
+Hosted tools can create and verify a receiver, send a signed test, read delivery status, manage the stored `multiaccount` setting and rotate credentials with confirmation. All enabled endpoints with a public HTTPS URL receive group events; the stored `multiaccount` setting does not gate delivery. A sample test does not prove real delivery. HRE confidence is separate from Risk Score; unknown metadata does not imply a negative result.
 
 Use `integrate_shieldlabs` to inspect the project and choose installation stages. `investigate_user` and `review_request` require an explicit domain UUID and only mention enabled tools. Server-side integrations use the Node SDK's current `entities` client. Keep the public browser key separate from server credentials.
 
@@ -152,7 +154,7 @@ Read polling respects the total wait deadline, Retry-After and cancellation. A 4
 
 ## Compatibility
 
-Node.js 20, 22 and 24 are tested in CI. Transports are stdio and streamable HTTP, with resources and prompts. The current Node SDK entity client is pinned by commit in CI. Scored webhook normalization remains separate from entity History; older row-search SDK methods do not represent the current API.
+Node.js 20, 22 and 24 are tested in CI. Transports are stdio and streamable HTTP, with resources and prompts. The published Node SDK 1.3.2 entity client is pinned in package-lock.json and bundled into the executable. Scored webhook normalization remains separate from entity History; older row-search SDK methods do not represent the current API.
 
 ## Hosted service
 
